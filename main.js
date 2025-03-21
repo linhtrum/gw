@@ -1,6 +1,6 @@
 "use strict";
 
-import { h, render, html, useState, Router } from "./bundle.js";
+import { h, render, html, useState, Router, useEffect } from "./bundle.js";
 import { Sidebar, Header } from "./components/Components.js";
 import Login from "./components/pages/Login.js";
 import Home from "./components/pages/Home.js";
@@ -12,18 +12,14 @@ function App() {
   const [user, setUser] = useState(null);
   const [url, setUrl] = useState("/");
 
-  const handleLogin = (userData) => {
-    setUser(userData);
-  };
+  const logout = () => fetch("/api/logout").then((r) => setUser(null));
+  const login = (r) =>
+    !r.ok ? setUser(null) : r.json().then((data) => setUser(data.user));
 
-  const handleLogout = () => {
-    setUser(null);
-    window.location.hash = "/";
-  };
+  useEffect(() => fetch("/api/login").then(login), []);
 
-  // If user is not logged in, show login page
   if (!user) {
-    return h(Login, { onLogin: handleLogin });
+    return html` <${Login} onLogin=${login} /> `;
   }
 
   // If user is logged in, show main application
@@ -31,7 +27,7 @@ function App() {
     <div class="flex h-screen">
       <${Sidebar} currentRoute=${url} />
       <div class="flex-1 flex flex-col">
-        <${Header} user=${user} onLogout=${handleLogout} />
+        <${Header} user=${user} onLogout=${logout} />
         <main class="flex-1 ml-64 pt-16 p-5 bg-gray-50">
           <${Router} onChange=${(ev) =>
     setUrl(ev.url)} history=${History.createHashHistory()}>

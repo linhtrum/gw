@@ -252,6 +252,7 @@ function Home() {
     // Cleanup function
     return () => {
       if (wsRef.current) {
+        wsRef.current.onclose = null; // Clear onclose handler before closing
         wsRef.current.close();
       }
       if (reconnectTimeoutRef.current) {

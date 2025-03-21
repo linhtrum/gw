@@ -437,12 +437,9 @@ export function Header({ user, onLogout }) {
           <div class="flex-1"></div>
           <div class="flex items-center space-x-4">
             <div class="flex items-center">
-              <span class="text-gray-700 text-sm mr-2">
+              <span class="text-gray-700 text-sm">
                 <i class="fas fa-user-circle text-xl mr-2"></i>
-                ${user.username}
-              </span>
-              <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                ${user.role}
+                ${user}
               </span>
             </div>
             <button

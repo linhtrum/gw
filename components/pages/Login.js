@@ -11,22 +11,19 @@ function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = function (e) {
     e.preventDefault();
-    setError("");
     setIsLoading(true);
 
-    // For demo purposes, using hardcoded credentials
-    // In production, this should be replaced with actual authentication
-    if (credentials.username === "admin" && credentials.password === "admin") {
-      onLogin({
-        username: credentials.username,
-        role: "Administrator",
-      });
-    } else {
-      setError("Invalid username or password");
-    }
-    setIsLoading(false);
+    const authhdr =
+      "Basic " + btoa(credentials.username + ":" + credentials.password);
+    const headers = { Authorization: authhdr };
+    return fetch("/api/login", {
+      method: "POST",
+      headers: headers,
+    })
+      .then(onLogin)
+      .finally(() => setIsLoading(false));
   };
 
   const handleChange = (e) => {
