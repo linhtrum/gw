@@ -26,6 +26,23 @@ export const Icons = {
     </svg>
   `,
 
+  // Plus icon
+  PlusIcon: ({ className = "h-5 w-5" }) => html`
+    <svg
+      class=${className}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  `,
+
   // Search icon
   SearchIcon: ({ className = "h-5 w-5" }) => html`
     <svg
@@ -531,118 +548,6 @@ export function Tabs({ tabs, activeTab, onTabChange }) {
           `
         )}
       </nav>
-    </div>
-  `;
-}
-
-export function Card({
-  card,
-  onDelete,
-  onEditTitle,
-  onTitleUpdate,
-  onCancelEdit,
-  editingCardId,
-  editingTitle,
-  setEditingTitle,
-  formatTime,
-}) {
-  const handleTitleKeyPress = (e) => {
-    if (e.key === "Enter") {
-      onTitleUpdate(card.id);
-    } else if (e.key === "Escape") {
-      onCancelEdit(card.id);
-    }
-  };
-
-  return html`
-    <div class="bg-white rounded-lg shadow-md overflow-hidden">
-      <div
-        class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center"
-      >
-        ${editingCardId === card.id
-          ? html`
-              <div class="flex items-center flex-1 gap-2">
-                <input
-                  type="text"
-                  value=${editingTitle}
-                  onChange=${(e) =>
-                    setEditingTitle(e.target.value.slice(0, 20))}
-                  onKeyDown=${handleTitleKeyPress}
-                  maxlength="20"
-                  class="flex-1 px-2 py-1 text-lg font-semibold text-gray-800 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autofocus
-                />
-                <button
-                  onClick=${() => onTitleUpdate(card.id)}
-                  class="p-1.5 bg-green-500 text-white rounded hover:bg-green-600 flex items-center justify-center"
-                  title="Save changes"
-                >
-                  <${Icons.SaveIcon} className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick=${() => onCancelEdit(card.id)}
-                  class="p-1.5 bg-red-500 text-red-100 rounded hover:bg-red-600 flex items-center justify-center"
-                  title="Discard changes"
-                >
-                  <${Icons.CloseIcon} className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            `
-          : html`
-              <div class="flex items-center flex-1 min-w-0">
-                <h2 class="text-lg font-semibold text-gray-800 truncate">
-                  ${card.t}
-                </h2>
-                <button
-                  onClick=${() => onEditTitle(card.id, card.t)}
-                  class="ml-2 text-gray-400 hover:text-blue-600"
-                  title="Edit title"
-                >
-                  <${Icons.EditIcon} className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            `}
-        <button
-          onClick=${() => onDelete(card.id)}
-          class="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-red-500 transition-all ml-2 flex-shrink-0"
-          title="Delete card"
-        >
-          <${Icons.TrashIcon} className="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <div class="p-4">
-        <div class="text-sm text-gray-500 mb-2 truncate">${card.dn}</div>
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-gray-50 p-3 rounded-md shadow-sm">
-            <div class="flex items-center justify-between">
-              <span class="text-sm text-gray-500">Temperature</span>
-              <span class="text-xs text-gray-400">${card.tn.a}</span>
-            </div>
-            <div class="mt-1 flex items-baseline">
-              <span class="text-2xl font-semibold text-blue-600">
-                ${card.tn.v || "N/A"}
-              </span>
-              <span class="ml-1 text-gray-600">°C</span>
-            </div>
-          </div>
-          <div class="bg-gray-50 p-3 rounded-md shadow-sm">
-            <div class="flex items-center justify-between">
-              <span class="text-sm text-gray-500">Humidity</span>
-              <span class="text-xs text-gray-400">${card.hn.a}</span>
-            </div>
-            <div class="mt-1 flex items-baseline">
-              <span class="text-2xl font-semibold text-green-600">
-                ${card.hn.v || "N/A"}
-              </span>
-              <span class="ml-1 text-gray-600">%</span>
-            </div>
-          </div>
-        </div>
-        <div class="mt-3 text-xs text-gray-400 flex items-center">
-          <${Icons.ClockIcon} className="w-3 h-3 mr-1" />
-          Last updated: ${formatTime(card.lastUpdate)}
-        </div>
-      </div>
     </div>
   `;
 }

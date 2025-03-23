@@ -1,6 +1,6 @@
 "use strict";
-import { h, html, useState, useEffect } from "../../bundle.js";
-import { Icons, Card, Button } from "../Components.js";
+import { h, html, useState, useEffect, useMemo } from "../../bundle.js";
+import { Icons, Button } from "../Components.js";
 
 function Home() {
   const [displayCards, setDisplayCards] = useState([]);
@@ -165,6 +165,15 @@ function Home() {
       setSaveError("");
       setSaveSuccess(false);
 
+      // Validate card configurations before saving
+      const invalidCards = displayCards.filter(
+        (card) => !card.t || !card.dn || !card.tn || !card.hn
+      );
+
+      if (invalidCards.length > 0) {
+        throw new Error("Some cards have invalid configurations");
+      }
+
       const config = displayCards.map((card) => ({
         t: card.t,
         dn: card.dn,
@@ -208,16 +217,16 @@ function Home() {
         throw new Error("Failed to reboot server");
       }
 
+      // Set success state and show message
       setSaveSuccess(true);
       setIsSaving(false);
 
-      // Show success message and update UI
-      setSaveSuccess(true);
+      // Show success message for 3 seconds
       setTimeout(() => {
         setSaveSuccess(false);
       }, 3000);
 
-      // Refresh page after a delay to allow server to reboot
+      // Refresh page after 5 seconds to allow server to reboot
       setTimeout(() => {
         window.location.reload();
       }, 5000);
@@ -254,6 +263,7 @@ function Home() {
       if (wsRef.current) {
         wsRef.current.onclose = null; // Clear onclose handler before closing
         wsRef.current.close();
+        console.log("WebSocket connection closed");
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
@@ -291,7 +301,7 @@ function Home() {
 
     const device = devices[parseInt(newCardConfig.di)];
     const newCard = {
-      t: newCardConfig.t,
+      t: newCardConfig.t.trim(),
       dn: device.n,
       tn: {
         n: device.ns[parseInt(newCardConfig.ti)].n,
@@ -309,6 +319,7 @@ function Home() {
         t: device.ns[parseInt(newCardConfig.hi)].t,
         v: device.ns[parseInt(newCardConfig.hi)].value,
       },
+      lastUpdate: new Date(),
     };
 
     setDisplayCards((prev) => [...prev, newCard]);
@@ -337,21 +348,29 @@ function Home() {
   };
 
   const handleTitleUpdate = (cardIndex) => {
-    if (editingTitle.trim() && editingTitle.length <= 20) {
-      setDisplayCards((prev) =>
-        prev.map((card, index) =>
-          index === cardIndex ? { ...card, t: editingTitle } : card
-        )
-      );
-      setEditingCardId(null);
-      setEditingTitle("");
-    } else {
-      alert("Title is required and must not exceed 20 characters");
+    const trimmedTitle = editingTitle.trim();
+    if (!trimmedTitle) {
+      alert("Title cannot be empty");
+      return;
     }
+
+    if (trimmedTitle.length > 20) {
+      alert("Title must not exceed 20 characters");
+      return;
+    }
+
+    setDisplayCards((prev) =>
+      prev.map((card, index) =>
+        index === cardIndex ? { ...card, t: trimmedTitle } : card
+      )
+    );
+    setEditingCardId(null);
+    setEditingTitle("");
   };
 
   const handleTitleKeyPress = (e, cardIndex) => {
     if (e.key === "Enter") {
+      e.preventDefault();
       handleTitleUpdate(cardIndex);
     } else if (e.key === "Escape") {
       setEditingCardId(null);
@@ -359,18 +378,31 @@ function Home() {
     }
   };
 
-  const handleCancelEdit = (cardIndex) => {
+  const handleCancelEdit = () => {
     setEditingCardId(null);
     setEditingTitle("");
   };
 
-  const handleDeleteCard = (cardIndex) => {
-    setDisplayCards((prev) => prev.filter((_, index) => index !== cardIndex));
+  const handleTitleChange = (e) => {
+    const newTitle = e.target.value;
+    if (newTitle.length <= 20) {
+      setEditingTitle(newTitle);
+    }
   };
 
-  // Filter cards based on search query
-  const filteredCards = displayCards.filter((card) =>
-    card.t.toLowerCase().includes(searchQuery.toLowerCase())
+  const handleDeleteCard = (cardIndex) => {
+    if (confirm("Are you sure you want to delete this card?")) {
+      setDisplayCards((prev) => prev.filter((_, index) => index !== cardIndex));
+    }
+  };
+
+  // Memoize filtered cards to prevent unnecessary recalculations
+  const filteredCards = useMemo(
+    () =>
+      displayCards.filter((card) =>
+        card.t.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [displayCards, searchQuery]
   );
 
   // Update the status indicator section
@@ -456,33 +488,9 @@ function Home() {
             </div>
           </div>
         </div>
-        <div class="flex gap-2">
-          <!-- ${displayCards.length > 0 &&
-          html`
-            <button
-              onClick=${saveCardConfigs}
-              class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-              disabled=${isSaving}
-            >
-              ${isSaving
-                ? html`
-                    <${SpinnerIcon} className="h-4 w-4 mr-2" />
-                    Saving...
-                  `
-                : "Save Configurations"}
-            </button>
-          `} -->
-          <!-- <button
-            onClick=${() => setIsAddingCard(true)}
-            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-          >
-            + Add Display Card
-          </button> -->
-
-          <${Button} onClick=${() => setIsAddingCard(true)} icon="PlusIcon">
-            Add Display Card
-          <//>
-        </div>
+        <${Button} onClick=${() => setIsAddingCard(true)} icon="PlusIcon">
+          Add Display Card
+        <//>
       </div>
 
       <!-- Search Box -->
@@ -640,18 +648,105 @@ function Home() {
         <div class="grid grid-rows-[auto] grid-cols-4 gap-4">
           ${filteredCards.map(
             (card, index) => html`
-              <${Card}
-                key=${index}
-                card=${card}
-                onDelete=${() => handleDeleteCard(index)}
-                onEditTitle=${() => handleStartEditing(index, card.t)}
-                onTitleUpdate=${() => handleTitleUpdate(index)}
-                onCancelEdit=${() => handleCancelEdit(index)}
-                editingCardId=${editingCardId}
-                editingTitle=${editingTitle}
-                setEditingTitle=${setEditingTitle}
-                formatTime=${formatTime}
-              />
+              <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div
+                  class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center"
+                >
+                  ${editingCardId === index
+                    ? html`
+                        <div class="flex items-center flex-1 gap-2">
+                          <input
+                            type="text"
+                            value=${editingTitle}
+                            onChange=${handleTitleChange}
+                            onKeyDown=${(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleTitleUpdate(index);
+                              } else if (e.key === "Escape") {
+                                handleCancelEdit();
+                              }
+                            }}
+                            maxlength="20"
+                            class="flex-1 px-2 py-1 text-lg font-semibold text-gray-800 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autofocus
+                          />
+                          <button
+                            onClick=${() => handleTitleUpdate(index)}
+                            class="p-1.5 bg-green-500 text-white rounded hover:bg-green-600 flex items-center justify-center"
+                            title="Save changes"
+                          >
+                            <${Icons.SaveIcon} className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick=${handleCancelEdit}
+                            class="p-1.5 bg-red-500 text-red-100 rounded hover:bg-red-600 flex items-center justify-center"
+                            title="Discard changes"
+                          >
+                            <${Icons.CloseIcon} className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      `
+                    : html`
+                        <div class="flex items-center flex-1 min-w-0">
+                          <h2
+                            class="text-lg font-semibold text-gray-800 truncate"
+                          >
+                            ${card.t}
+                          </h2>
+                          <button
+                            onClick=${() => handleStartEditing(index, card.t)}
+                            class="ml-2 text-gray-400 hover:text-blue-600"
+                            title="Edit title"
+                          >
+                            <${Icons.EditIcon} className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      `}
+                  <button
+                    onClick=${() => handleDeleteCard(index)}
+                    class="w-8 h-8 flex items-center justify-center rounded text-gray-400 hover:text-white hover:bg-red-500 transition-all ml-2 flex-shrink-0"
+                    title="Delete card"
+                  >
+                    <${Icons.TrashIcon} className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div class="p-4">
+                  <div class="text-sm text-gray-500 mb-2 truncate">
+                    ${card.dn}
+                  </div>
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-50 p-3 rounded-md shadow-sm">
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-500">Temperature</span>
+                        <span class="text-xs text-gray-400">${card.tn.a}</span>
+                      </div>
+                      <div class="mt-1 flex items-baseline">
+                        <span class="text-2xl font-semibold text-blue-600">
+                          ${card.tn.v || "N/A"}
+                        </span>
+                        <span class="ml-1 text-gray-600">°C</span>
+                      </div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded-md shadow-sm">
+                      <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-500">Humidity</span>
+                        <span class="text-xs text-gray-400">${card.hn.a}</span>
+                      </div>
+                      <div class="mt-1 flex items-baseline">
+                        <span class="text-2xl font-semibold text-green-600">
+                          ${card.hn.v || "N/A"}
+                        </span>
+                        <span class="ml-1 text-gray-600">%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-3 text-xs text-gray-400 flex items-center">
+                    <${Icons.ClockIcon} className="w-3 h-3 mr-1" />
+                    Last updated: ${formatTime(card.lastUpdate)}
+                  </div>
+                </div>
+              </div>
               ${(index + 1) % 4 === 0 && index !== filteredCards.length - 1
                 ? html`<div class="col-span-4"></div>`
                 : ""}
@@ -682,7 +777,7 @@ function Home() {
           loading=${isSaving}
           icon="SaveIcon"
         >
-          Save Configuration
+          ${isSaving ? "Saving..." : "Save Configuration"}
         <//>
       </div>
     </div>

@@ -1,18 +1,17 @@
 "use strict";
-import { h, html, useState, useEffect } from "../../bundle.js";
+import { h, html, useState, useEffect, useMemo } from "../../bundle.js";
 import { Icons, Button } from "../Components.js";
 
-function Devices() {
-  const MAX_DEVICES = 128;
-  const MAX_TOTAL_NODES = 300;
-  const MAX_NAME_LENGTH = 20;
-  const MIN_POLLING_INTERVAL = 10;
-  const MAX_POLLING_INTERVAL = 65535;
-  const MIN_TIMEOUT = 10;
-  const MAX_TIMEOUT = 65535;
-
-  // Add dataType mapping
-  const dataTypeMap = [
+// Constants and configuration
+const CONFIG = {
+  MAX_DEVICES: 128,
+  MAX_TOTAL_NODES: 300,
+  MAX_NAME_LENGTH: 20,
+  MIN_POLLING_INTERVAL: 10,
+  MAX_POLLING_INTERVAL: 65535,
+  MIN_TIMEOUT: 10,
+  MAX_TIMEOUT: 65535,
+  DATA_TYPES: [
     [1, "Boolean"],
     [2, "Int8"],
     [3, "UInt8"],
@@ -25,19 +24,18 @@ function Devices() {
     [10, "Float (ABCD)"],
     [11, "Float (CDAB)"],
     [12, "Double"],
-  ];
-
-  // Add functionMap
-  const functionMap = [
+  ],
+  FUNCTION_CODES: [
     [1, "01 - Read Coils"],
     [2, "02 - Read Discrete Inputs"],
     [3, "03 - Read Holding Registers"],
     [4, "04 - Read Input Registers"],
-  ];
+  ],
+};
 
-  // Add activeTab state
+function Devices() {
+  // State management
   const [activeTab, setActiveTab] = useState("device-config");
-
   const [devices, setDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,18 +43,59 @@ function Devices() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isAddingDevice, setIsAddingDevice] = useState(false);
+  const [isAddingNode, setIsAddingNode] = useState(false);
+
+  // Form states
+  const [newDevice, setNewDevice] = useState({
+    n: "",
+    da: 1,
+    pi: 1000,
+    g: false,
+  });
+  const [newNode, setNewNode] = useState({
+    n: "",
+    a: 1,
+    f: 1,
+    dt: 1,
+    t: 1000,
+  });
+
+  // Edit states
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [editingNodeIndex, setEditingNodeIndex] = useState(null);
+  const [editingNode, setEditingNode] = useState(null);
+
+  // Memoized values
+  const totalNodes = useMemo(
+    () =>
+      devices.reduce((total, device) => total + (device.ns?.length || 0), 0),
+    [devices]
+  );
+
+  const selectedDeviceNodes = useMemo(
+    () => (selectedDevice !== null ? devices[selectedDevice]?.ns || [] : []),
+    [devices, selectedDevice]
+  );
 
   const fetchDeviceConfig = async () => {
     try {
       setIsLoading(true);
       setLoadError("");
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch("/api/devices/get", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(
@@ -69,7 +108,11 @@ function Devices() {
       setSelectedDevice(data.length > 0 ? 0 : null);
     } catch (error) {
       console.error("Error fetching device configuration:", error);
-      setLoadError(error.message || "Failed to load device configuration");
+      setLoadError(
+        error.name === "AbortError"
+          ? "Request timed out. Please try again."
+          : error.message || "Failed to load device configuration"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -80,6 +123,16 @@ function Devices() {
       setIsSaving(true);
       setSaveError("");
       setSaveSuccess(false);
+
+      // Validate configurations before saving
+      const invalidDevices = devices.filter(
+        (device) =>
+          !device.n || !device.da || !device.pi || !Array.isArray(device.ns)
+      );
+
+      if (invalidDevices.length > 0) {
+        throw new Error("Some devices have invalid configurations");
+      }
 
       const config = devices.map((device) => ({
         n: device.n,
@@ -95,13 +148,19 @@ function Devices() {
         })),
       }));
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch("/api/devices/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(config),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(
@@ -110,12 +169,18 @@ function Devices() {
       }
 
       // Call reboot API after successful save
+      const rebootController = new AbortController();
+      const rebootTimeoutId = setTimeout(() => rebootController.abort(), 10000);
+
       const rebootResponse = await fetch("/api/reboot/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: rebootController.signal,
       });
+
+      clearTimeout(rebootTimeoutId);
 
       if (!rebootResponse.ok) {
         throw new Error("Failed to reboot server");
@@ -124,8 +189,7 @@ function Devices() {
       setSaveSuccess(true);
       setIsSaving(false);
 
-      // Show success message and update UI
-      setSaveSuccess(true);
+      // Show success message for 3 seconds
       setTimeout(() => {
         setSaveSuccess(false);
       }, 3000);
@@ -136,35 +200,14 @@ function Devices() {
       }, 5000);
     } catch (error) {
       console.error("Error saving device configuration:", error);
-      setSaveError(error.message || "Failed to save device configuration");
+      setSaveError(
+        error.name === "AbortError"
+          ? "Request timed out. Please try again."
+          : error.message || "Failed to save device configuration"
+      );
       setIsSaving(false);
     }
   };
-
-  const [newDevice, setNewDevice] = useState({
-    n: "",
-    da: 1,
-    pi: 1000,
-    g: false,
-  });
-
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [editingDevice, setEditingDevice] = useState(null);
-
-  // Node state
-  const [newNode, setNewNode] = useState({
-    n: "",
-    a: 1,
-    f: 1,
-    dt: "",
-    t: 1000,
-  });
-
-  const [editingNodeIndex, setEditingNodeIndex] = useState(null);
-  const [editingNode, setEditingNode] = useState(null);
-
-  // Add state for managing add device form visibility
-  const [isAddingDevice, setIsAddingDevice] = useState(false);
 
   const Th = (props) =>
     html`<th
@@ -216,47 +259,80 @@ function Devices() {
     });
   };
 
+  // Validation functions
+  const validateDeviceName = (name) => {
+    if (!name || name.trim().length === 0) {
+      return "Device name cannot be empty";
+    }
+    if (name.length > CONFIG.MAX_NAME_LENGTH) {
+      return `Device name cannot exceed ${CONFIG.MAX_NAME_LENGTH} characters`;
+    }
+    return null;
+  };
+
+  const validateSlaveAddress = (address) => {
+    const numValue = parseInt(address);
+    if (isNaN(numValue) || numValue < 1 || numValue > 247) {
+      return "Slave address must be between 1 and 247";
+    }
+    return null;
+  };
+
+  const validatePollingInterval = (interval) => {
+    const numValue = parseInt(interval);
+    if (
+      isNaN(numValue) ||
+      numValue < CONFIG.MIN_POLLING_INTERVAL ||
+      numValue > CONFIG.MAX_POLLING_INTERVAL
+    ) {
+      return `Polling interval must be between ${CONFIG.MIN_POLLING_INTERVAL} and ${CONFIG.MAX_POLLING_INTERVAL} ms`;
+    }
+    return null;
+  };
+
+  const validateNodeName = (name) => {
+    if (!name || name.trim().length === 0) {
+      return "Node name cannot be empty";
+    }
+    if (name.length > CONFIG.MAX_NAME_LENGTH) {
+      return `Node name cannot exceed ${CONFIG.MAX_NAME_LENGTH} characters`;
+    }
+    return null;
+  };
+
+  const validateTimeout = (timeout) => {
+    const numValue = parseInt(timeout);
+    if (
+      isNaN(numValue) ||
+      numValue < CONFIG.MIN_TIMEOUT ||
+      numValue > CONFIG.MAX_TIMEOUT
+    ) {
+      return `Timeout must be between ${CONFIG.MIN_TIMEOUT} and ${CONFIG.MAX_TIMEOUT} ms`;
+    }
+    return null;
+  };
+
+  // Form handlers
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    let error = null;
 
-    // Add validation for modbus address (1-247)
-    if (name === "da") {
-      const numValue = parseInt(value);
-      if (value !== "" && (isNaN(numValue) || numValue < 1 || numValue > 247)) {
-        alert("Modbus address must be between 1 and 247");
-        return;
-      }
-      setNewDevice((prev) => ({
-        ...prev,
-        [name]: numValue,
-      }));
-      return;
+    switch (name) {
+      case "n":
+        error = validateDeviceName(value);
+        break;
+      case "da":
+        error = validateSlaveAddress(value);
+        break;
+      case "pi":
+        error = validatePollingInterval(value);
+        break;
+      default:
+        break;
     }
 
-    // Add validation for polling interval (10-65535 ms)
-    if (name === "pi") {
-      const numValue = parseInt(value);
-      if (
-        value !== "" &&
-        (isNaN(numValue) ||
-          numValue < MIN_POLLING_INTERVAL ||
-          numValue > MAX_POLLING_INTERVAL)
-      ) {
-        alert(
-          `Polling interval must be between ${MIN_POLLING_INTERVAL} and ${MAX_POLLING_INTERVAL} ms`
-        );
-        return;
-      }
-      setNewDevice((prev) => ({
-        ...prev,
-        [name]: numValue,
-      }));
-      return;
-    }
-
-    // Add validation for name length
-    if (name === "n" && value.length > MAX_NAME_LENGTH) {
-      alert(`Name cannot exceed ${MAX_NAME_LENGTH} characters`);
+    if (error) {
+      alert(error);
       return;
     }
 
@@ -266,91 +342,57 @@ function Devices() {
     }));
   };
 
-  const handleEditInputChange = (e) => {
-    const { name, value } = e.target;
-
-    // Add validation for modbus address (1-247)
-    if (name === "da") {
-      const numValue = parseInt(value);
-      if (value !== "" && (isNaN(numValue) || numValue < 1 || numValue > 247)) {
-        alert("Modbus address must be between 1 and 247");
-        return;
-      }
-    }
-
-    // Add validation for polling interval (10-65535 ms)
-    if (name === "pi") {
-      const numValue = parseInt(value);
-      if (
-        value !== "" &&
-        (isNaN(numValue) ||
-          numValue < MIN_POLLING_INTERVAL ||
-          numValue > MAX_POLLING_INTERVAL)
-      ) {
-        alert(
-          `Polling interval must be between ${MIN_POLLING_INTERVAL} and ${MAX_POLLING_INTERVAL} ms`
-        );
-        return;
-      }
-    }
-
-    // Add validation for name length
-    if (name === "n" && value.length > MAX_NAME_LENGTH) {
-      alert(`Name cannot exceed ${MAX_NAME_LENGTH} characters`);
-      return;
-    }
-
-    setEditingDevice((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
   const handleNodeInputChange = (e) => {
     const { name, value } = e.target;
+    let error = null;
 
-    // Add validation for name length
-    if (name === "n" && value.length > MAX_NAME_LENGTH) {
-      alert(`Node name cannot exceed ${MAX_NAME_LENGTH} characters`);
+    switch (name) {
+      case "n":
+        error = validateNodeName(value);
+        break;
+      case "t":
+        error = validateTimeout(value);
+        break;
+      default:
+        break;
+    }
+
+    if (error) {
+      alert(error);
       return;
     }
 
-    // Handle integer fields
-    if (["a", "f", "t"].includes(name)) {
-      const numValue = parseInt(value);
-      if (value !== "") {
-        if (
-          name === "t" &&
-          (isNaN(numValue) || numValue < MIN_TIMEOUT || numValue > MAX_TIMEOUT)
-        ) {
-          alert(`Timeout must be between ${MIN_TIMEOUT} and ${MAX_TIMEOUT} ms`);
-          return;
-        }
-        setNewNode((prev) => ({
-          ...prev,
-          [name]: numValue,
-        }));
-      }
-      return;
+    // Convert numeric fields to integers
+    if (["a", "f", "dt", "t"].includes(name)) {
+      setNewNode((prev) => ({
+        ...prev,
+        [name]: parseInt(value) || 1, // Provide default value of 1 if parsing fails
+      }));
+    } else {
+      setNewNode((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
     }
-
-    setNewNode((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (devices.length >= MAX_DEVICES) {
-      alert(
-        `Maximum number of devices (${MAX_DEVICES}) reached. Cannot add more devices.`
-      );
+
+    // Validate all fields
+    const nameError = validateDeviceName(newDevice.n);
+    const addressError = validateSlaveAddress(newDevice.da);
+    const intervalError = validatePollingInterval(newDevice.pi);
+
+    if (nameError || addressError || intervalError) {
+      alert(nameError || addressError || intervalError);
       return;
     }
 
-    if (!newDevice.n || !newDevice.da || !newDevice.pi) {
-      alert("Please fill in all fields");
+    if (devices.length >= CONFIG.MAX_DEVICES) {
+      alert(
+        `Maximum number of devices (${CONFIG.MAX_DEVICES}) reached. Cannot add more devices.`
+      );
       return;
     }
 
@@ -370,35 +412,22 @@ function Devices() {
     });
   };
 
-  // Calculate total nodes across all devices
-  const getTotalNodes = () => {
-    return devices.reduce(
-      (total, device) => total + (device.ns?.length || 0),
-      0
-    );
-  };
-
   const handleNodeSubmit = (e) => {
     e.preventDefault();
     if (selectedDevice === null) return;
 
-    const totalNodes = getTotalNodes();
-    if (totalNodes >= MAX_TOTAL_NODES) {
-      alert(
-        `Maximum total number of nodes (${MAX_TOTAL_NODES}) reached across all devices. Cannot add more nodes.`
-      );
+    // Validate all fields
+    const nameError = validateNodeName(newNode.n);
+    const timeoutError = validateTimeout(newNode.t);
+
+    if (nameError || timeoutError) {
+      alert(nameError || timeoutError);
       return;
     }
 
-    if (!newNode.n || !newNode.a || !newNode.f || !newNode.dt || !newNode.t) {
-      alert("Please fill in all node fields");
-      return;
-    }
-
-    // Check if node name is unique across all devices
-    if (!isNodeNameUniqueAcrossDevices(newNode.n)) {
+    if (totalNodes >= CONFIG.MAX_TOTAL_NODES) {
       alert(
-        "A node with this name already exists in any device. Please use a unique name."
+        `Maximum total number of nodes (${CONFIG.MAX_TOTAL_NODES}) reached across all devices. Cannot add more nodes.`
       );
       return;
     }
@@ -407,7 +436,16 @@ function Devices() {
       if (index === selectedDevice) {
         return {
           ...device,
-          ns: [...(device.ns || []), { ...newNode }],
+          ns: [
+            ...(device.ns || []),
+            {
+              ...newNode,
+              dt: parseInt(newNode.dt), // Ensure dt is numeric
+              a: parseInt(newNode.a),
+              f: parseInt(newNode.f),
+              t: parseInt(newNode.t),
+            },
+          ],
         };
       }
       return device;
@@ -418,25 +456,51 @@ function Devices() {
       n: "",
       a: 1,
       f: 1,
-      dt: "",
+      dt: 1, // Reset to default numeric value
       t: 1000,
     });
   };
 
-  const deleteNode = (nodeIndex) => {
-    const updatedDevices = devices.map((device, index) => {
-      if (index === selectedDevice) {
-        const updatedNodes = device.ns.filter((_, i) => i !== nodeIndex);
-        return { ...device, ns: updatedNodes };
+  const deleteDevice = (index) => {
+    const deviceName = devices[index].n;
+    if (
+      confirm(
+        `Are you sure you want to delete device "${deviceName}"? This will also delete all its nodes.`
+      )
+    ) {
+      const newDevices = devices.filter((_, i) => i !== index);
+      setDevices(newDevices);
+      if (selectedDevice === index) {
+        setSelectedDevice(null);
       }
-      return device;
-    });
-    setDevices(updatedDevices);
+    }
+  };
+
+  const deleteNode = (nodeIndex) => {
+    const nodeName = devices[selectedDevice].ns[nodeIndex].n;
+    if (confirm(`Are you sure you want to delete node "${nodeName}"?`)) {
+      const updatedDevices = devices.map((device, index) => {
+        if (index === selectedDevice) {
+          const updatedNodes = device.ns.filter((_, i) => i !== nodeIndex);
+          return { ...device, ns: updatedNodes };
+        }
+        return device;
+      });
+      setDevices(updatedDevices);
+    }
   };
 
   const startEditing = (index) => {
     setEditingIndex(index);
-    setEditingDevice({ ...devices[index] });
+    // Create a deep copy of the device to avoid modifying the original
+    const deviceToEdit = {
+      n: devices[index].n,
+      da: parseInt(devices[index].da),
+      pi: parseInt(devices[index].pi),
+      g: Boolean(devices[index].g),
+      ns: [...(devices[index].ns || [])],
+    };
+    setEditingDevice(deviceToEdit);
   };
 
   const saveEdit = (index) => {
@@ -466,28 +530,100 @@ function Devices() {
 
   const startEditingNode = (nodeIndex) => {
     setEditingNodeIndex(nodeIndex);
-    setEditingNode({ ...devices[selectedDevice].ns[nodeIndex] });
+    // Create a deep copy of the node to avoid modifying the original
+    const nodeToEdit = {
+      n: devices[selectedDevice].ns[nodeIndex].n,
+      a: parseInt(devices[selectedDevice].ns[nodeIndex].a),
+      f: parseInt(devices[selectedDevice].ns[nodeIndex].f),
+      dt: parseInt(devices[selectedDevice].ns[nodeIndex].dt),
+      t: parseInt(devices[selectedDevice].ns[nodeIndex].t),
+    };
+    setEditingNode(nodeToEdit);
+  };
+
+  const handleEditInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    let error = null;
+
+    // Handle checkbox inputs
+    if (type === "checkbox") {
+      setEditingDevice((prev) => ({
+        ...prev,
+        [name]: checked,
+      }));
+      return;
+    }
+
+    // Validate numeric inputs
+    if (["da", "pi"].includes(name)) {
+      const numValue = parseInt(value);
+      if (value !== "") {
+        if (
+          name === "da" &&
+          (isNaN(numValue) || numValue < 1 || numValue > 247)
+        ) {
+          error = "Slave address must be between 1 and 247";
+        } else if (
+          name === "pi" &&
+          (isNaN(numValue) ||
+            numValue < CONFIG.MIN_POLLING_INTERVAL ||
+            numValue > CONFIG.MAX_POLLING_INTERVAL)
+        ) {
+          error = `Polling interval must be between ${CONFIG.MIN_POLLING_INTERVAL} and ${CONFIG.MAX_POLLING_INTERVAL} ms`;
+        }
+      }
+    }
+
+    // Validate device name
+    if (name === "n") {
+      if (!value || value.trim().length === 0) {
+        error = "Device name cannot be empty";
+      } else if (value.length > CONFIG.MAX_NAME_LENGTH) {
+        error = `Device name cannot exceed ${CONFIG.MAX_NAME_LENGTH} characters`;
+      }
+    }
+
+    if (error) {
+      alert(error);
+      return;
+    }
+
+    setEditingDevice((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleEditNodeInputChange = (e) => {
     const { name, value } = e.target;
 
     // Add validation for name length
-    if (name === "n" && value.length > MAX_NAME_LENGTH) {
-      alert(`Node name cannot exceed ${MAX_NAME_LENGTH} characters`);
+    if (name === "n" && value.length > CONFIG.MAX_NAME_LENGTH) {
+      alert(`Node name cannot exceed ${CONFIG.MAX_NAME_LENGTH} characters`);
       return;
     }
 
-    // Add validation for timeout (10-65535 ms)
-    if (name === "t") {
-      const numValue = parseInt(value);
+    // Handle all numeric fields
+    if (["a", "f", "dt", "t"].includes(name)) {
+      const numValue = parseInt(value) || 1; // Provide default value of 1 if parsing fails
+
       if (
-        value !== "" &&
-        (isNaN(numValue) || numValue < MIN_TIMEOUT || numValue > MAX_TIMEOUT)
+        name === "t" &&
+        (isNaN(numValue) ||
+          numValue < CONFIG.MIN_TIMEOUT ||
+          numValue > CONFIG.MAX_TIMEOUT)
       ) {
-        alert(`Timeout must be between ${MIN_TIMEOUT} and ${MAX_TIMEOUT} ms`);
+        alert(
+          `Timeout must be between ${CONFIG.MIN_TIMEOUT} and ${CONFIG.MAX_TIMEOUT} ms`
+        );
         return;
       }
+
+      setEditingNode((prev) => ({
+        ...prev,
+        [name]: numValue,
+      }));
+      return;
     }
 
     setEditingNode((prev) => ({
@@ -630,113 +766,132 @@ function Devices() {
         ? html`
             <!-- Device Configuration Tab Content -->
             <div>
-              <div class="mb-8 bg-white p-6 rounded-lg shadow-md">
-                <h2 class="text-xl font-semibold mb-4">
-                  Add New Device
+              <!-- Add New Device Button -->
+              <div class="mb-8 flex justify-between items-center">
+                <h2 class="text-xl font-semibold">
+                  Device Configuration
                   <span class="text-sm text-gray-500 font-normal">
-                    (${devices.length}/${MAX_DEVICES} devices)
+                    (${devices.length}/${CONFIG.MAX_DEVICES} devices)
                   </span>
                 </h2>
-                <form onSubmit=${handleSubmit}>
-                  <div class="flex items-end gap-4">
-                    <div class="flex-1">
-                      <label
-                        class="block text-sm font-medium text-gray-700 mb-2"
-                      >
-                        Name
-                        <span class="text-xs text-gray-500 ml-1"
-                          >(max ${MAX_NAME_LENGTH} chars)</span
+                <${Button}
+                  onClick=${() => setIsAddingDevice(!isAddingDevice)}
+                  variant="primary"
+                  icon="PlusIcon"
+                >
+                  ${isAddingDevice ? "Cancel" : "Add New Device"}
+                <//>
+              </div>
+
+              <!-- Add New Device Form -->
+              ${isAddingDevice &&
+              html`
+                <div class="mb-8 bg-white p-6 rounded-lg shadow-md">
+                  <h3 class="text-lg font-semibold mb-4">Add New Device</h3>
+                  <form onSubmit=${handleSubmit}>
+                    <div class="flex items-end gap-4">
+                      <div class="flex-1">
+                        <label
+                          class="block text-sm font-medium text-gray-700 mb-2"
                         >
-                      </label>
-                      <input
-                        type="text"
-                        name="n"
-                        value=${newDevice.n}
-                        onChange=${handleInputChange}
-                        maxlength=${MAX_NAME_LENGTH}
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter unique device name"
-                        required
-                      />
-                    </div>
-                    <div class="flex-1">
-                      <label
-                        class="block text-sm font-medium text-gray-700 mb-2"
-                        >Slave Address
-                        <span class="text-xs text-gray-500 ml-1">(1-247)</span>
-                      </label>
-                      <input
-                        type="number"
-                        name="da"
-                        value=${newDevice.da}
-                        onChange=${handleInputChange}
-                        min="1"
-                        max="247"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter slave address"
-                        required
-                      />
-                    </div>
-                    <div class="flex-1">
-                      <label
-                        class="block text-sm font-medium text-gray-700 mb-2"
-                      >
-                        Polling Interval
-                        <span class="text-xs text-gray-500 ml-1"
-                          >(${MIN_POLLING_INTERVAL}-${MAX_POLLING_INTERVAL}
-                          ms)</span
-                        >
-                      </label>
-                      <input
-                        type="number"
-                        name="pi"
-                        value=${newDevice.pi}
-                        onChange=${handleInputChange}
-                        min=${MIN_POLLING_INTERVAL}
-                        max=${MAX_POLLING_INTERVAL}
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter polling interval"
-                        required
-                      />
-                    </div>
-                    <div class="flex-1">
-                      <label
-                        class="block text-sm font-medium text-gray-700 mb-2"
-                      >
-                        Merge Collection
-                      </label>
-                      <div
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center min-h-[42px]"
-                      >
-                        <label class="flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            id="g"
-                            name="g"
-                            checked=${newDevice.g}
-                            onChange=${(e) =>
-                              setNewDevice({
-                                ...newDevice,
-                                g: e.target.checked,
-                              })}
-                            class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                          <span class="ml-2 text-gray-700">Yes</span>
+                          Name
+                          <span class="text-xs text-gray-500 ml-1"
+                            >(max ${CONFIG.MAX_NAME_LENGTH} chars)</span
+                          >
                         </label>
+                        <input
+                          type="text"
+                          name="n"
+                          value=${newDevice.n}
+                          onChange=${handleInputChange}
+                          maxlength=${CONFIG.MAX_NAME_LENGTH}
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter unique device name"
+                          required
+                        />
+                      </div>
+                      <div class="flex-1">
+                        <label
+                          class="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          Slave Address
+                          <span class="text-xs text-gray-500 ml-1"
+                            >(1-247)</span
+                          >
+                        </label>
+                        <input
+                          type="number"
+                          name="da"
+                          value=${newDevice.da}
+                          onChange=${handleInputChange}
+                          min="1"
+                          max="247"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter slave address"
+                          required
+                        />
+                      </div>
+                      <div class="flex-1">
+                        <label
+                          class="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          Polling Interval
+                          <span class="text-xs text-gray-500 ml-1"
+                            >(${CONFIG.MIN_POLLING_INTERVAL}-${CONFIG.MAX_POLLING_INTERVAL}
+                            ms)</span
+                          >
+                        </label>
+                        <input
+                          type="number"
+                          name="pi"
+                          value=${newDevice.pi}
+                          onChange=${handleInputChange}
+                          min=${CONFIG.MIN_POLLING_INTERVAL}
+                          max=${CONFIG.MAX_POLLING_INTERVAL}
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter polling interval"
+                          required
+                        />
+                      </div>
+                      <div class="flex-1">
+                        <label
+                          class="block text-sm font-medium text-gray-700 mb-2"
+                        >
+                          Merge Collection
+                        </label>
+                        <div
+                          class="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center min-h-[42px]"
+                        >
+                          <label class="flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              id="g"
+                              name="g"
+                              checked=${newDevice.g}
+                              onChange=${(e) =>
+                                setNewDevice({
+                                  ...newDevice,
+                                  g: e.target.checked,
+                                })}
+                              class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <span class="ml-2 text-gray-700">Yes</span>
+                          </label>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="flex justify-end mt-4">
-                    <${Button}
-                      onClick=${handleSubmit}
-                      variant="primary"
-                      icon="SaveIcon"
-                    >
-                      Add Device
-                    <//>
-                  </div>
-                </form>
-              </div>
+                    <div class="flex justify-end mt-4">
+                      <${Button}
+                        onClick=${handleSubmit}
+                        variant="primary"
+                        icon="SaveIcon"
+                      >
+                        Add Device
+                      <//>
+                    </div>
+                  </form>
+                </div>
+              `}
 
               <!-- Devices Table -->
               <div class="bg-white rounded-lg shadow-md overflow-hidden mb-8">
@@ -773,7 +928,7 @@ function Devices() {
                                     name="n"
                                     value=${editingDevice.n}
                                     onChange=${handleEditInputChange}
-                                    maxlength=${MAX_NAME_LENGTH}
+                                    maxlength=${CONFIG.MAX_NAME_LENGTH}
                                     class="w-full px-2 py-1 border border-gray-300 rounded"
                                   />
                                 `
@@ -802,8 +957,8 @@ function Devices() {
                                     name="pi"
                                     value=${editingDevice.pi}
                                     onChange=${handleEditInputChange}
-                                    min=${MIN_POLLING_INTERVAL}
-                                    max=${MAX_POLLING_INTERVAL}
+                                    min=${CONFIG.MIN_POLLING_INTERVAL}
+                                    max=${CONFIG.MAX_POLLING_INTERVAL}
                                     class="w-full px-2 py-1 border border-gray-300 rounded"
                                   />
                                 `
@@ -816,11 +971,7 @@ function Devices() {
                                     type="checkbox"
                                     name="g"
                                     checked=${editingDevice.g}
-                                    onChange=${(e) =>
-                                      setEditingDevice({
-                                        ...editingDevice,
-                                        g: e.target.checked,
-                                      })}
+                                    onChange=${handleEditInputChange}
                                     class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                                   />
                                 `
@@ -868,12 +1019,7 @@ function Devices() {
                                   <button
                                     onClick=${(e) => {
                                       e.stopPropagation();
-                                      const newDevices = devices.filter(
-                                        (_, i) => i !== index
-                                      );
-                                      setDevices(newDevices);
-                                      if (selectedDevice === index)
-                                        setSelectedDevice(null);
+                                      deleteDevice(index);
                                     }}
                                     class="text-red-600 hover:text-red-900"
                                   >
@@ -891,141 +1037,152 @@ function Devices() {
               ${selectedDevice !== null &&
               html`
                 <div class="mt-8">
-                  <h2 class="text-2xl font-bold mb-4">
-                    Node Details for ${devices[selectedDevice].n}
-                    <span class="text-sm text-gray-500 font-normal">
-                      (Device Nodes:
-                      ${devices[selectedDevice].ns
-                        ? devices[selectedDevice].ns.length
-                        : 0},
-                      Total Nodes: ${getTotalNodes()}/${MAX_TOTAL_NODES})
-                    </span>
-                  </h2>
+                  <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold">
+                      Node Details for ${devices[selectedDevice].n}
+                      <span class="text-sm text-gray-500 font-normal">
+                        (Device Nodes: ${selectedDeviceNodes.length}, Total
+                        Nodes: ${totalNodes}/${CONFIG.MAX_TOTAL_NODES})
+                      </span>
+                    </h2>
+                    <${Button}
+                      onClick=${() => setIsAddingNode(!isAddingNode)}
+                      variant="primary"
+                      icon="PlusIcon"
+                    >
+                      ${isAddingNode ? "Cancel" : "Add New Node"}
+                    <//>
+                  </div>
 
                   <!-- Add Node Form -->
-                  <form
-                    onSubmit=${handleNodeSubmit}
-                    class="mb-8 bg-white p-6 rounded-lg shadow-md"
-                  >
-                    <h3 class="text-lg font-semibold mb-4">
-                      Add New Node
-                      ${getTotalNodes() >= MAX_TOTAL_NODES
-                        ? html`<span
-                            class="text-red-500 text-sm font-normal ml-2"
+                  ${isAddingNode &&
+                  html`
+                    <form
+                      onSubmit=${handleNodeSubmit}
+                      class="mb-8 bg-white p-6 rounded-lg shadow-md"
+                    >
+                      <h3 class="text-lg font-semibold mb-4">
+                        Add New Node
+                        ${totalNodes >= CONFIG.MAX_TOTAL_NODES
+                          ? html`<span
+                              class="text-red-500 text-sm font-normal ml-2"
+                            >
+                              (Maximum nodes limit reached)
+                            </span>`
+                          : html`<span
+                              class="text-gray-500 text-sm font-normal ml-2"
+                            >
+                              (${CONFIG.MAX_TOTAL_NODES - totalNodes} nodes
+                              remaining)
+                            </span>`}
+                      </h3>
+                      <div class="grid grid-cols-5 gap-4">
+                        <div>
+                          <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
                           >
-                            (Maximum nodes limit reached)
-                          </span>`
-                        : html`<span
-                            class="text-gray-500 text-sm font-normal ml-2"
+                            Name
+                            <span class="text-xs text-gray-500 ml-1"
+                              >(max ${CONFIG.MAX_NAME_LENGTH} chars)</span
+                            >
+                          </label>
+                          <input
+                            type="text"
+                            name="n"
+                            value=${newNode.n}
+                            onChange=${handleNodeInputChange}
+                            maxlength=${CONFIG.MAX_NAME_LENGTH}
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            placeholder="Node name"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
                           >
-                            (${MAX_TOTAL_NODES - getTotalNodes()} nodes
-                            remaining)
-                          </span>`}
-                    </h3>
-                    <div class="grid grid-cols-5 gap-4">
-                      <div>
-                        <label
-                          class="block text-sm font-medium text-gray-700 mb-2"
-                        >
-                          Name
-                          <span class="text-xs text-gray-500 ml-1"
-                            >(max ${MAX_NAME_LENGTH} chars)</span
+                            Register Address
+                          </label>
+                          <input
+                            type="text"
+                            name="a"
+                            value=${newNode.a}
+                            onChange=${handleNodeInputChange}
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            placeholder="Register address"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
                           >
-                        </label>
-                        <input
-                          type="text"
-                          name="n"
-                          value=${newNode.n}
-                          onChange=${handleNodeInputChange}
-                          maxlength=${MAX_NAME_LENGTH}
-                          class="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          placeholder="Node name"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label
-                          class="block text-sm font-medium text-gray-700 mb-2"
-                          >Register Address</label
-                        >
-                        <input
-                          type="text"
-                          name="a"
-                          value=${newNode.a}
-                          onChange=${handleNodeInputChange}
-                          class="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          placeholder="Register address"
-                        />
-                      </div>
-                      <div>
-                        <label
-                          class="block text-sm font-medium text-gray-700 mb-2"
-                          >Function code</label
-                        >
-                        <select
-                          name="f"
-                          value=${newNode.f}
-                          onChange=${handleNodeInputChange}
-                          class="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        >
-                          ${functionMap.map(
-                            ([value, label]) => html`
-                              <option value=${value}>${label}</option>
-                            `
-                          )}
-                        </select>
-                      </div>
-                      <div>
-                        <label
-                          class="block text-sm font-medium text-gray-700 mb-2"
-                        >
-                          Data type
-                        </label>
-                        <select
-                          name="dt"
-                          value=${newNode.dt}
-                          onChange=${handleNodeInputChange}
-                          class="w-full px-3 py-2 border border-gray-300 rounded-md"
-                        >
-                          <option value="">Select type</option>
-                          ${dataTypeMap.map(
-                            ([value, label]) => html`
-                              <option value=${value}>${label}</option>
-                            `
-                          )}
-                        </select>
-                      </div>
-                      <div>
-                        <label
-                          class="block text-sm font-medium text-gray-700 mb-2"
-                        >
-                          Timeout
-                          <span class="text-xs text-gray-500 ml-1"
-                            >(${MIN_TIMEOUT}-${MAX_TIMEOUT} ms)</span
+                            Function code
+                          </label>
+                          <select
+                            name="f"
+                            value=${newNode.f}
+                            onChange=${handleNodeInputChange}
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md"
                           >
-                        </label>
-                        <input
-                          type="number"
-                          name="t"
-                          value=${newNode.t}
-                          onChange=${handleNodeInputChange}
-                          min=${MIN_TIMEOUT}
-                          max=${MAX_TIMEOUT}
-                          class="w-full px-3 py-2 border border-gray-300 rounded-md"
-                          placeholder="Timeout"
-                        />
+                            ${CONFIG.FUNCTION_CODES.map(
+                              ([value, label]) => html`
+                                <option value=${value}>${label}</option>
+                              `
+                            )}
+                          </select>
+                        </div>
+                        <div>
+                          <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                          >
+                            Data type
+                          </label>
+                          <select
+                            name="dt"
+                            value=${newNode.dt}
+                            onChange=${handleNodeInputChange}
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          >
+                            ${CONFIG.DATA_TYPES.map(
+                              ([value, label]) => html`
+                                <option value=${value}>${label}</option>
+                              `
+                            )}
+                          </select>
+                        </div>
+                        <div>
+                          <label
+                            class="block text-sm font-medium text-gray-700 mb-2"
+                          >
+                            Timeout
+                            <span class="text-xs text-gray-500 ml-1"
+                              >(${CONFIG.MIN_TIMEOUT}-${CONFIG.MAX_TIMEOUT}
+                              ms)</span
+                            >
+                          </label>
+                          <input
+                            type="number"
+                            name="t"
+                            value=${newNode.t}
+                            onChange=${handleNodeInputChange}
+                            min=${CONFIG.MIN_TIMEOUT}
+                            max=${CONFIG.MAX_TIMEOUT}
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            placeholder="Timeout"
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <div class="flex justify-end mt-4">
-                      <${Button}
-                        onClick=${handleNodeSubmit}
-                        variant="primary"
-                        icon="SaveIcon"
-                      >
-                        Add Node
-                      <//>
-                    </div>
-                  </form>
+                      <div class="flex justify-end mt-4">
+                        <${Button}
+                          onClick=${handleNodeSubmit}
+                          variant="primary"
+                          icon="SaveIcon"
+                        >
+                          Add Node
+                        <//>
+                      </div>
+                    </form>
+                  `}
 
                   <!-- Nodes Table -->
                   <div class="bg-white rounded-lg shadow-md overflow-hidden">
@@ -1044,7 +1201,7 @@ function Devices() {
                         </tr>
                       </thead>
                       <tbody class="bg-white divide-y divide-gray-200">
-                        ${(devices[selectedDevice].ns || []).map(
+                        ${selectedDeviceNodes.map(
                           (node, nodeIndex) => html`
                             <tr key=${nodeIndex}>
                               <td
@@ -1060,7 +1217,7 @@ function Devices() {
                                         name="n"
                                         value=${editingNode.n}
                                         onChange=${handleEditNodeInputChange}
-                                        maxlength=${MAX_NAME_LENGTH}
+                                        maxlength=${CONFIG.MAX_NAME_LENGTH}
                                         class="w-full px-2 py-1 border border-gray-300 rounded"
                                       />
                                     `
@@ -1088,7 +1245,7 @@ function Devices() {
                                         onChange=${handleEditNodeInputChange}
                                         class="w-full px-2 py-1 border border-gray-300 rounded"
                                       >
-                                        ${functionMap.map(
+                                        ${CONFIG.FUNCTION_CODES.map(
                                           ([value, label]) => html`
                                             <option value=${value}>
                                               ${label}
@@ -1097,7 +1254,7 @@ function Devices() {
                                         )}
                                       </select>
                                     `
-                                  : functionMap.find(
+                                  : CONFIG.FUNCTION_CODES.find(
                                       ([value]) => value === node.f
                                     )?.[1]}
                               </td>
@@ -1110,7 +1267,7 @@ function Devices() {
                                         onChange=${handleEditNodeInputChange}
                                         class="w-full px-2 py-1 border border-gray-300 rounded"
                                       >
-                                        ${dataTypeMap.map(
+                                        ${CONFIG.DATA_TYPES.map(
                                           ([value, label]) => html`
                                             <option value=${value}>
                                               ${label}
@@ -1119,7 +1276,7 @@ function Devices() {
                                         )}
                                       </select>
                                     `
-                                  : dataTypeMap.find(
+                                  : CONFIG.DATA_TYPES.find(
                                       ([value]) => value === parseInt(node.dt)
                                     )?.[1]}
                               </td>
@@ -1131,8 +1288,8 @@ function Devices() {
                                         name="t"
                                         value=${editingNode.t}
                                         onChange=${handleEditNodeInputChange}
-                                        min=${MIN_TIMEOUT}
-                                        max=${MAX_TIMEOUT}
+                                        min=${CONFIG.MIN_TIMEOUT}
+                                        max=${CONFIG.MAX_TIMEOUT}
                                         class="w-full px-2 py-1 border border-gray-300 rounded"
                                       />
                                     `

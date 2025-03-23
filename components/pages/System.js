@@ -1,6 +1,32 @@
 "use strict";
-import { h, html, useState, useEffect } from "../../bundle.js";
+import { h, html, useState, useEffect, useRef } from "../../bundle.js";
 import { Icons, Button, Tabs } from "../Components.js";
+
+// Constants and configuration
+const CONFIG = {
+  DEFAULT_PORT: 8000,
+  DEFAULT_TIMEZONE: 21, // UTC+07:00 (Indochina)
+  DEFAULT_NTP_SERVERS: {
+    primary: "pool.ntp.org",
+    secondary: "time.google.com",
+    tertiary: "time.windows.com",
+  },
+  PASSWORD_REQUIREMENTS: {
+    minLength: 8,
+    hasUpperCase: /[A-Z]/,
+    hasLowerCase: /[a-z]/,
+    hasNumbers: /\d/,
+    hasSpecialChar: /[!@#$%^&*(),.?":{}|<>]/,
+  },
+  API_TIMEOUT: 10000, // 10 seconds
+  REBOOT_DELAY: 3000, // 3 seconds
+  PORT_RANGE: {
+    min: 1,
+    max: 65535,
+  },
+  MAX_LOG_LINES: 1000,
+  HEX_PATTERN: /^(0x[0-9A-Fa-f]{2}\s*)*$/, // Updated pattern to match "0x" prefix format
+};
 
 // Timezone mapping array
 const TIMEZONE_OPTIONS = [
@@ -33,46 +59,72 @@ const TIMEZONE_OPTIONS = [
 ];
 
 function System() {
+  // State management
   const [activeTab, setActiveTab] = useState("user");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [message, setMessage] = useState({ type: "", text: "" });
+
+  // System configuration state
   const [systemConfig, setSystemConfig] = useState({
     username: "admin",
     password: "",
-    server1: "pool.ntp.org",
-    server2: "time.google.com",
-    server3: "time.windows.com",
-    timezone: 21, // Default to UTC+07:00 (Indochina)
+    server1: CONFIG.DEFAULT_NTP_SERVERS.primary,
+    server2: CONFIG.DEFAULT_NTP_SERVERS.secondary,
+    server3: CONFIG.DEFAULT_NTP_SERVERS.tertiary,
+    timezone: CONFIG.DEFAULT_TIMEZONE,
     enabled: true,
-    port: 8000,
+    port: CONFIG.DEFAULT_PORT,
     time: null,
   });
 
-  const [isRestoring, setIsRestoring] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [message, setMessage] = useState({ type: "", text: "" });
-
   // Track original config for comparison
   const [originalConfig, setOriginalConfig] = useState(null);
+
+  // Add new state for logs
+  const [isLoggingEnabled, setIsLoggingEnabled] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [wsConnection, setWsConnection] = useState(null);
+  const logTextAreaRef = useRef(null);
+
+  // Add new state for data input
+  const [inputData, setInputData] = useState("");
+  const [isHexValid, setIsHexValid] = useState(true);
 
   const tabs = [
     { id: "user", label: "User Config" },
     { id: "time", label: "Time Settings" },
     { id: "websocket", label: "Web Server Settings" },
     { id: "factory", label: "Factory Reset" },
+    { id: "logs", label: "System Logs" },
   ];
 
   // Fetch all system configuration
   const fetchSystemConfig = async () => {
     setIsLoading(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        CONFIG.API_TIMEOUT
+      );
+
       const response = await fetch("/api/system/get", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error("Failed to fetch system configuration");
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch system configuration: ${response.statusText}`
+        );
+      }
 
       const data = await response.json();
 
@@ -83,18 +135,22 @@ function System() {
       setSystemConfig({
         username: data.username || "admin",
         password: "", // Don't set password from server
-        server1: data.server1 || "pool.ntp.org",
-        server2: data.server2 || "time.google.com",
-        server3: data.server3 || "time.windows.com",
-        timezone: data.timezone || 21,
+        server1: data.server1 || CONFIG.DEFAULT_NTP_SERVERS.primary,
+        server2: data.server2 || CONFIG.DEFAULT_NTP_SERVERS.secondary,
+        server3: data.server3 || CONFIG.DEFAULT_NTP_SERVERS.tertiary,
+        timezone: data.timezone || CONFIG.DEFAULT_TIMEZONE,
         enabled: data.enabled ?? true,
-        port: data.port || 8000,
+        port: data.port || CONFIG.DEFAULT_PORT,
         time: data.time ? new Date(data.time) : null,
       });
     } catch (error) {
+      console.error("Error fetching system configuration:", error);
       setMessage({
         type: "error",
-        text: "Failed to load system configuration",
+        text:
+          error.name === "AbortError"
+            ? "Request timed out. Please try again."
+            : "Failed to load system configuration",
       });
     } finally {
       setIsLoading(false);
@@ -105,31 +161,25 @@ function System() {
   const validatePassword = (password) => {
     if (!password) return true; // Empty password is valid (no change)
 
-    const minLength = 8;
-    const hasUpperCase = /[A-Z]/.test(password);
-    const hasLowerCase = /[a-z]/.test(password);
-    const hasNumbers = /\d/.test(password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-
     const requirements = [
       {
-        met: password.length >= minLength,
-        message: "Password must be at least 8 characters long",
+        met: password.length >= CONFIG.PASSWORD_REQUIREMENTS.minLength,
+        message: `Password must be at least ${CONFIG.PASSWORD_REQUIREMENTS.minLength} characters long`,
       },
       {
-        met: hasUpperCase,
+        met: CONFIG.PASSWORD_REQUIREMENTS.hasUpperCase.test(password),
         message: "Password must contain at least one uppercase letter",
       },
       {
-        met: hasLowerCase,
+        met: CONFIG.PASSWORD_REQUIREMENTS.hasLowerCase.test(password),
         message: "Password must contain at least one lowercase letter",
       },
       {
-        met: hasNumbers,
+        met: CONFIG.PASSWORD_REQUIREMENTS.hasNumbers.test(password),
         message: "Password must contain at least one number",
       },
       {
-        met: hasSpecialChar,
+        met: CONFIG.PASSWORD_REQUIREMENTS.hasSpecialChar.test(password),
         message: "Password must contain at least one special character",
       },
     ];
@@ -139,6 +189,44 @@ function System() {
       isValid: failedRequirements.length === 0,
       errors: failedRequirements.map((req) => req.message),
     };
+  };
+
+  // Add port validation function
+  const validatePort = (port) => {
+    const portNum = parseInt(port);
+    if (
+      isNaN(portNum) ||
+      portNum < CONFIG.PORT_RANGE.min ||
+      portNum > CONFIG.PORT_RANGE.max
+    ) {
+      return `Port must be between ${CONFIG.PORT_RANGE.min} and ${CONFIG.PORT_RANGE.max}`;
+    }
+    return null;
+  };
+
+  // Add username validation function
+  const validateUsername = (username) => {
+    if (!username || username.trim().length === 0) {
+      return "Username cannot be empty";
+    }
+    if (username.length < 3 || username.length > 20) {
+      return "Username must be between 3 and 20 characters";
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return "Username can only contain letters, numbers, underscores, and hyphens";
+    }
+    return null;
+  };
+
+  // Add NTP server validation function
+  const validateNTPServer = (server) => {
+    if (!server || server.trim().length === 0) {
+      return "NTP server cannot be empty";
+    }
+    if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(server)) {
+      return "Invalid NTP server format";
+    }
+    return null;
   };
 
   // Save all modified configurations
@@ -170,15 +258,26 @@ function System() {
         port: systemConfig.port,
       };
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        CONFIG.API_TIMEOUT
+      );
+
       const response = await fetch("/api/system/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(updatedConfig),
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error("Failed to save configuration");
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to save configuration: ${response.statusText}`);
+      }
 
       setMessage({
         type: "success",
@@ -192,23 +291,38 @@ function System() {
       }));
 
       // Trigger server reboot after successful save
+      const rebootController = new AbortController();
+      const rebootTimeoutId = setTimeout(
+        () => rebootController.abort(),
+        CONFIG.API_TIMEOUT
+      );
+
       const rebootResponse = await fetch("/api/reboot/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: rebootController.signal,
       });
 
-      if (!rebootResponse.ok) throw new Error("Failed to reboot server");
+      clearTimeout(rebootTimeoutId);
+
+      if (!rebootResponse.ok) {
+        throw new Error("Failed to reboot server");
+      }
 
       // Refresh the page after a short delay
       setTimeout(() => {
         window.location.reload();
-      }, 3000);
+      }, CONFIG.REBOOT_DELAY);
     } catch (error) {
+      console.error("Error saving system configuration:", error);
       setMessage({
         type: "error",
-        text: `Failed to update settings: ${error.message}`,
+        text:
+          error.name === "AbortError"
+            ? "Request timed out. Please try again."
+            : `Failed to update settings: ${error.message}`,
       });
     } finally {
       setIsSaving(false);
@@ -217,17 +331,136 @@ function System() {
 
   // Handle all configuration changes
   const handleConfigChange = (field, value) => {
-    // Clear error message when user starts typing a new password
-    if (field === "password" && message.type === "error") {
+    // Clear error message when user starts typing
+    if (message.type === "error") {
       setMessage({ type: "", text: "" });
+    }
+
+    let error = null;
+
+    // Validate input based on field type
+    switch (field) {
+      case "username":
+        error = validateUsername(value);
+        break;
+      case "password":
+        // Password validation is handled in handleSaveConfig
+        break;
+      case "port":
+        error = validatePort(value);
+        break;
+      case "server1":
+      case "server2":
+      case "server3":
+        error = validateNTPServer(value);
+        break;
+      default:
+        break;
+    }
+
+    if (error) {
+      setMessage({
+        type: "error",
+        text: error,
+      });
+      return;
     }
 
     setSystemConfig((prev) => ({
       ...prev,
       [field]: value,
-      // handleConfigChange,
     }));
   };
+
+  // Add function to get WebSocket URL
+  const getWebSocketUrl = () => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.host;
+    return `${protocol}//${host}/websocket`;
+  };
+
+  // Update WebSocket connection handling
+  const connectWebSocket = () => {
+    if (wsConnection) return;
+
+    const wsUrl = getWebSocketUrl();
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log("WebSocket connected to:", wsUrl);
+      setMessage({
+        type: "success",
+        text: "WebSocket connected successfully",
+      });
+    };
+
+    ws.onmessage = (event) => {
+      setLogs((prevLogs) => {
+        // Add newline before new message if logs not empty
+        const newMessage = prevLogs.length > 0 ? `\n${event.data}` : event.data;
+        const newLogs = [newMessage, ...prevLogs];
+        // Keep only the last MAX_LOG_LINES lines
+        if (newLogs.length > CONFIG.MAX_LOG_LINES) {
+          return newLogs.slice(0, CONFIG.MAX_LOG_LINES);
+        }
+        return newLogs;
+      });
+
+      // Auto-scroll to top since newest logs are at the top
+      if (logTextAreaRef.current) {
+        logTextAreaRef.current.scrollTop = 0;
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket disconnected");
+      setWsConnection(null);
+      setMessage({
+        type: "error",
+        text: "WebSocket disconnected. Attempting to reconnect...",
+      });
+      // Attempt to reconnect if logging is still enabled
+      if (isLoggingEnabled) {
+        setTimeout(connectWebSocket, 3000);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setMessage({
+        type: "error",
+        text: "WebSocket connection error",
+      });
+      ws.close();
+    };
+
+    setWsConnection(ws);
+  };
+
+  const disconnectWebSocket = () => {
+    if (wsConnection) {
+      wsConnection.close();
+      setWsConnection(null);
+    }
+  };
+
+  // Handle logging toggle
+  const handleLoggingToggle = (enabled) => {
+    setIsLoggingEnabled(enabled);
+    if (enabled) {
+      connectWebSocket();
+    } else {
+      disconnectWebSocket();
+      setLogs([]); // Clear logs when disabled
+    }
+  };
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      disconnectWebSocket();
+    };
+  }, []);
 
   // Load initial configuration
   useEffect(() => {
@@ -253,14 +486,27 @@ function System() {
 
     setIsRestoring(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        CONFIG.API_TIMEOUT
+      );
+
       const response = await fetch("/api/factory/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error("Failed to perform factory reset");
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to perform factory reset: ${response.statusText}`
+        );
+      }
 
       setMessage({
         type: "success",
@@ -270,11 +516,15 @@ function System() {
       // Refresh the page after a short delay
       setTimeout(() => {
         window.location.reload();
-      }, 3000);
+      }, CONFIG.REBOOT_DELAY);
     } catch (error) {
+      console.error("Error performing factory reset:", error);
       setMessage({
         type: "error",
-        text: "Failed to perform factory reset",
+        text:
+          error.name === "AbortError"
+            ? "Request timed out. Please try again."
+            : "Failed to perform factory reset",
       });
     } finally {
       setIsRestoring(false);
@@ -289,14 +539,25 @@ function System() {
 
     setIsRestoring(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        CONFIG.API_TIMEOUT
+      );
+
       const response = await fetch("/api/reboot/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error("Failed to reboot server");
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Failed to reboot server: ${response.statusText}`);
+      }
 
       setMessage({
         type: "success",
@@ -306,17 +567,106 @@ function System() {
       // Refresh the page after a short delay
       setTimeout(() => {
         window.location.reload();
-      }, 3000);
+      }, CONFIG.REBOOT_DELAY);
     } catch (error) {
+      console.error("Error rebooting server:", error);
       setMessage({
         type: "error",
-        text: "Failed to reboot server",
+        text:
+          error.name === "AbortError"
+            ? "Request timed out. Please try again."
+            : "Failed to reboot server",
       });
     } finally {
       setIsRestoring(false);
     }
   };
 
+  // Add data sending functions
+  const sendAsciiData = () => {
+    if (!wsConnection || !inputData.trim()) return;
+
+    try {
+      wsConnection.send(inputData);
+      setInputData(""); // Clear input after sending
+    } catch (error) {
+      console.error("Error sending ASCII data:", error);
+      setMessage({
+        type: "error",
+        text: "Failed to send ASCII data",
+      });
+    }
+  };
+
+  const sendHexData = () => {
+    if (!wsConnection || !inputData.trim()) return;
+
+    try {
+      // Split the input by spaces and process each hex value
+      const hexValues = inputData.trim().split(/\s+/);
+
+      // Validate each hex value
+      const isValid = hexValues.every((hex) => {
+        if (hex.toLowerCase().startsWith("0x")) {
+          return /^0x[0-9A-Fa-f]{2}$/.test(hex.toLowerCase());
+        }
+        return /^[0-9A-Fa-f]{2}$/.test(hex);
+      });
+
+      if (!isValid) {
+        throw new Error(
+          "Invalid HEX format. Use format: 0x01 0x02 or 01 02 (2 digits per byte)"
+        );
+      }
+
+      // Convert each "0x" prefixed value to a number
+      const bytes = new Uint8Array(
+        hexValues.map((hex) => {
+          const value = hex.toLowerCase().startsWith("0x")
+            ? parseInt(hex.slice(2), 16)
+            : parseInt(hex, 16);
+
+          if (isNaN(value) || value < 0 || value > 255) {
+            throw new Error(`Invalid hex value: ${hex}`);
+          }
+
+          return value;
+        })
+      );
+
+      wsConnection.send(bytes);
+      setInputData(""); // Clear input after sending
+      setIsHexValid(true); // Reset validation state
+      setMessage({ type: "", text: "" }); // Clear any error messages
+    } catch (error) {
+      console.error("Error sending HEX data:", error);
+      setIsHexValid(false);
+      setMessage({
+        type: "error",
+        text: error.message,
+      });
+    }
+  };
+
+  // Remove validation from input change handler
+  const handleInputChange = (value) => {
+    setInputData(value);
+    // Clear error messages when user types
+    if (!isHexValid) {
+      setIsHexValid(true);
+      setMessage({ type: "", text: "" });
+    }
+  };
+
+  // Add clear all function
+  const clearAll = () => {
+    setInputData(""); // Clear input field
+    setLogs([]); // Clear logs
+    setIsHexValid(true); // Reset validation
+    setMessage({ type: "", text: "" }); // Clear any messages
+  };
+
+  // Render message component
   const renderMessage = () => {
     if (!message.text) return null;
     const bgColor = message.type === "success" ? "bg-green-100" : "bg-red-100";
@@ -515,8 +865,8 @@ function System() {
                   onChange=${(e) =>
                     handleConfigChange("port", parseInt(e.target.value))}
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  min="1"
-                  max="65535"
+                  min=${CONFIG.PORT_RANGE.min}
+                  max=${CONFIG.PORT_RANGE.max}
                   required
                 />
                 <span class="text-sm text-gray-500">(1-65535)</span>
@@ -622,6 +972,93 @@ function System() {
                 ${isRestoring ? "Restoring..." : "Restore Factory Settings"}
               <//>
             </div>
+          </div>
+        `}
+        ${activeTab === "logs" &&
+        html`
+          <div class="space-y-6">
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-medium text-gray-900">System Logs</h2>
+              <div class="flex items-center space-x-2">
+                <label class="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked=${isLoggingEnabled}
+                    onChange=${(e) => handleLoggingToggle(e.target.checked)}
+                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span class="ml-2 text-sm text-gray-700">Enable Logging</span>
+                </label>
+                ${isLoggingEnabled &&
+                html`
+                  <${Button}
+                    onClick=${clearAll}
+                    variant="warning"
+                    icon="TrashIcon"
+                  >
+                    Clear All
+                  <//>
+                `}
+              </div>
+            </div>
+
+            <div class="bg-gray-50 rounded-lg p-4">
+              <textarea
+                ref=${logTextAreaRef}
+                class="w-full h-96 font-mono text-sm bg-gray-900 text-gray-100 p-4 rounded-lg"
+                readonly
+                value=${logs.join("")}
+                placeholder=${isLoggingEnabled
+                  ? "Waiting for logs..."
+                  : "Enable logging to view system logs"}
+                style="direction: ltr;"
+              ></textarea>
+            </div>
+
+            ${isLoggingEnabled &&
+            html`
+              <div class="space-y-4">
+                <div class="flex flex-col space-y-2">
+                  <label class="block text-sm font-medium text-gray-700">
+                    Data Input
+                  </label>
+                  <div class="flex space-x-2">
+                    <input
+                      type="text"
+                      value=${inputData}
+                      onChange=${(e) => handleInputChange(e.target.value)}
+                      class=${`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        !isHexValid ? "border-red-500" : "border-gray-300"
+                      }`}
+                      placeholder="Enter ASCII or HEX data (e.g., 0x01 0x02 or plain text)"
+                    />
+                    <${Button}
+                      onClick=${sendAsciiData}
+                      disabled=${!wsConnection}
+                      variant="primary"
+                    >
+                      Send ASCII
+                    <//>
+                    <${Button}
+                      onClick=${sendHexData}
+                      disabled=${!wsConnection}
+                      variant="secondary"
+                    >
+                      Send HEX
+                    <//>
+                  </div>
+                  ${!isHexValid &&
+                  html` <p class="text-sm text-red-500">${message.text}</p> `}
+                </div>
+              </div>
+            `}
+            ${!isLoggingEnabled &&
+            html`
+              <div class="text-sm text-gray-500">
+                Enable logging to view real-time system logs and send data. The
+                logs will be cleared when logging is disabled.
+              </div>
+            `}
           </div>
         `}
       </div>
