@@ -490,6 +490,11 @@ export function Sidebar({ currentRoute }) {
       icon: html`<${Icons.DevicesIcon} className="w-5 h-5" />`,
     },
     {
+      path: "/logs",
+      label: "Logs",
+      icon: html`<${Icons.ClockIcon} className="w-5 h-5" />`,
+    },
+    {
       path: "/system",
       label: "System",
       icon: html`<${Icons.SettingsIcon} className="w-5 h-5" />`,
