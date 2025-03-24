@@ -579,7 +579,7 @@ function Devices() {
       return;
     }
 
-    // Validate numeric inputs
+    // Handle numeric inputs
     if (["da", "pi"].includes(name)) {
       const numValue = parseInt(value);
       if (value !== "") {
@@ -597,6 +597,12 @@ function Devices() {
           error = `Polling interval must be between ${CONFIG.MIN_POLLING_INTERVAL} and ${CONFIG.MAX_POLLING_INTERVAL} ms`;
         }
       }
+      // Update the value as a number
+      setEditingDevice((prev) => ({
+        ...prev,
+        [name]: value === "" ? "" : numValue,
+      }));
+      return;
     }
 
     // Validate device name
