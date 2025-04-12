@@ -1,6 +1,6 @@
 "use strict";
 import { h, html, useState, useEffect, useRef } from "../../bundle.js";
-import { Icons, Button, Tabs } from "../Components.js";
+import { Icons, Button, Tabs, Input, Checkbox, Select } from "../Components.js";
 
 // Constants and configuration
 const CONFIG = {
@@ -63,8 +63,9 @@ const TIMEZONE_OPTIONS = [
 // Log method options array
 const LOG_METHOD_OPTIONS = [
   [0, "DISABLE"],
-  [1, "SERIAL"],
-  [2, "SYSTEM"],
+  [1, "SERIAL1"],
+  [2, "SERIAL2"],
+  [3, "SYSTEM"],
 ];
 
 function System() {
@@ -400,43 +401,33 @@ function System() {
     <div class="p-6">
       <h1 class="text-2xl font-bold mb-6">System Configuration</h1>
       ${renderMessage()}
-
-      <div class="space-y-8">
-        <!-- User Profile Section -->
-        <div class="max-w-[60%] mx-auto">
-          <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">User Profile</h2>
+      <div class="max-w-2xl mx-auto">
+        <div class="space-y-6">
+          <!-- User Profile Section -->
+          <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium mb-4">User Profile</h2>
+            <p class="text-gray-600 mb-4">
+              Configure your user account settings and credentials.
+            </p>
             <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Username</label
-                >
-                <div class="flex items-center space-x-2">
-                  <input
-                    type="text"
-                    value=${systemConfig.username}
-                    onChange=${(e) =>
-                      handleConfigChange("username", e.target.value)}
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                  <span class="text-sm text-gray-500">(3-20 characters)</span>
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Password</label
-                >
-                <input
-                  type="password"
-                  value=${systemConfig.password}
-                  onChange=${(e) =>
-                    handleConfigChange("password", e.target.value)}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Leave blank to keep current password"
-                />
-              </div>
-              <div class="bg-gray-50 rounded-lg p-4 mt-2">
+              ${Input({
+                type: "text",
+                name: "username",
+                label: "Username",
+                value: systemConfig.username,
+                onChange: (e) => handleConfigChange("username", e.target.value),
+                required: true,
+                placeholder: "Enter your username",
+              })}
+              ${Input({
+                type: "password",
+                name: "password",
+                label: "Password",
+                value: systemConfig.password,
+                onChange: (e) => handleConfigChange("password", e.target.value),
+                placeholder: "Leave blank to keep current password",
+              })}
+              <div class="bg-gray-50 rounded-lg p-4">
                 <h3 class="text-sm font-medium text-gray-700 mb-2">
                   Password Requirements
                 </h3>
@@ -450,170 +441,93 @@ function System() {
               </div>
             </div>
           </div>
-        </div>
-        <!-- Time Settings Section -->
-        <div class="max-w-[60%] mx-auto">
-          <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">
-              Time Settings
-            </h2>
+
+          <!-- Time Settings Section -->
+          <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium mb-4">Time Settings</h2>
+            <p class="text-gray-600 mb-4">
+              Configure time synchronization and timezone settings.
+            </p>
             <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Primary NTP Server</label
-                >
-                <input
-                  type="text"
-                  value=${systemConfig.server1}
-                  onChange=${(e) =>
-                    handleConfigChange("server1", e.target.value)}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Secondary NTP Server</label
-                >
-                <input
-                  type="text"
-                  value=${systemConfig.server2}
-                  onChange=${(e) =>
-                    handleConfigChange("server2", e.target.value)}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Tertiary NTP Server</label
-                >
-                <input
-                  type="text"
-                  value=${systemConfig.server3}
-                  onChange=${(e) =>
-                    handleConfigChange("server3", e.target.value)}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Timezone</label
-                >
-                <select
-                  value=${systemConfig.timezone}
-                  onChange=${(e) =>
-                    handleConfigChange("timezone", parseInt(e.target.value))}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  ${TIMEZONE_OPTIONS.map(
-                    (tz) => html` <option value=${tz[0]}>${tz[1]}</option> `
-                  )}
-                </select>
-              </div>
-              <div class="flex items-center">
-                <input
-                  type="checkbox"
-                  checked=${systemConfig.enabled}
-                  onChange=${(e) =>
-                    handleConfigChange("enabled", e.target.checked)}
-                  class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <label class="ml-2 block text-sm text-gray-700"
-                  >Enable NTP Synchronization</label
-                >
-              </div>
+              ${Checkbox({
+                label: "Enable NTP Synchronization",
+                name: "enabled",
+                value: systemConfig.enabled,
+                onChange: (e) =>
+                  handleConfigChange("enabled", e.target.checked),
+              })}
+              ${systemConfig.enabled &&
+              html`
+                ${Input({
+                  type: "text",
+                  name: "server1",
+                  label: "NTP Server",
+                  value: systemConfig.server1,
+                  onChange: (e) =>
+                    handleConfigChange("server1", e.target.value),
+                  required: true,
+                  placeholder: "Enter NTP server",
+                })}
+                ${Select({
+                  label: "Timezone",
+                  name: "timezone",
+                  value: systemConfig.timezone,
+                  onChange: (e) =>
+                    handleConfigChange("timezone", parseInt(e.target.value)),
+                  options: TIMEZONE_OPTIONS,
+                })}
+              `}
             </div>
           </div>
-        </div>
 
-        <!-- Web Server Settings Section -->
-        <div class="max-w-[60%] mx-auto">
-          <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">
-              Web Server Settings
-            </h2>
+          <!-- Web Server Settings Section -->
+          <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium mb-4">Web Server Settings</h2>
+            <p class="text-gray-600 mb-4">
+              Configure web server and WebSocket port settings.
+            </p>
             <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >HTTP Server Port</label
-                >
-                <div class="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    value=${systemConfig.hport}
-                    onChange=${(e) =>
-                      handleConfigChange("hport", parseInt(e.target.value))}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    min=${CONFIG.PORT_RANGE.min}
-                    max=${CONFIG.PORT_RANGE.max}
-                    required
-                  />
-                  <span class="text-sm text-gray-500">(1-65535)</span>
-                </div>
-                <p class="mt-1 text-sm text-gray-500">
-                  The port number for the HTTP server interface. Default is
-                  8000.
-                </p>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >WebSocket Server Port</label
-                >
-                <div class="flex items-center space-x-2">
-                  <input
-                    type="number"
-                    value=${systemConfig.wport}
-                    onChange=${(e) =>
-                      handleConfigChange("wport", parseInt(e.target.value))}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    min=${CONFIG.PORT_RANGE.min}
-                    max=${CONFIG.PORT_RANGE.max}
-                    required
-                  />
-                  <span class="text-sm text-gray-500">(1-65535)</span>
-                </div>
-                <p class="mt-1 text-sm text-gray-500">
-                  The port number for the WebSocket server interface. Default is
-                  9000.
-                </p>
-              </div>
-
-              <!-- Add Log Method Selection -->
-              <div class="mt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1"
-                  >Log Method</label
-                >
-                <div class="mt-2">
-                  <select
-                    value=${systemConfig.logMethod}
-                    onChange=${(e) =>
-                      handleConfigChange("logMethod", parseInt(e.target.value))}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    ${LOG_METHOD_OPTIONS.map(
-                      ([value, label]) =>
-                        html`<option value=${value}>${label}</option>`
-                    )}
-                  </select>
-                  <p class="mt-1 text-sm text-gray-500">
-                    Choose where to output log messages. SERIAL for debugging
-                    via UART, SYSTEM for system-level logging, or DISABLE to
-                    turn off logging.
-                  </p>
-                </div>
-              </div>
-
-              <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mt-4">
+              ${Input({
+                type: "number",
+                name: "hport",
+                label: "Webserver Port",
+                extra: "(0~65535)",
+                value: systemConfig.hport,
+                onChange: (e) =>
+                  handleConfigChange("hport", parseInt(e.target.value)),
+                min: CONFIG.PORT_RANGE.min,
+                max: CONFIG.PORT_RANGE.max,
+                required: true,
+              })}
+              ${Input({
+                type: "number",
+                name: "wport",
+                label: "WebSocket Port",
+                extra: "(1~65535)",
+                value: systemConfig.wport,
+                onChange: (e) =>
+                  handleConfigChange("wport", parseInt(e.target.value)),
+                min: CONFIG.PORT_RANGE.min,
+                max: CONFIG.PORT_RANGE.max,
+                required: true,
+              })}
+              ${Select({
+                label: "Log Method",
+                name: "logMethod",
+                value: systemConfig.logMethod,
+                onChange: (e) =>
+                  handleConfigChange("logMethod", parseInt(e.target.value)),
+                options: LOG_METHOD_OPTIONS,
+                required: true,
+              })}
+              <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
                 <div class="flex">
                   <div class="flex-shrink-0">
                     <${Icons.WarningIcon} className="h-5 w-5 text-yellow-400" />
                   </div>
                   <div class="ml-3">
                     <p class="text-sm text-yellow-700">
-                      Note: Changing either the HTTP or WebSocket port will
+                      Note: Changing either the Webserver or WebSocket port will
                       require you to reconnect using the new port numbers.
                     </p>
                   </div>
@@ -621,83 +535,33 @@ function System() {
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Factory Reset Section -->
-        <div class="max-w-[60%] mx-auto">
-          <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-lg font-medium text-gray-900 mb-4">
-              System Maintenance
-            </h2>
-            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-              <div class="flex">
-                <div class="flex-shrink-0">
-                  <${Icons.WarningIcon} className="h-5 w-5 text-yellow-400" />
-                </div>
-                <div class="ml-3">
-                  <p class="text-sm text-yellow-700">
-                    Warning: Restoring factory settings will erase all
-                    configurations and cannot be undone. This action will:
-                  </p>
-                  <ul
-                    class="mt-2 text-sm text-yellow-700 list-disc list-inside"
-                  >
-                    <li>Reset all device settings to default values</li>
-                    <li>Clear all user configurations</li>
-                    <li>Restart the device</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            <div class="flex justify-end space-x-4">
-              <${Button}
-                onClick=${handleReboot}
-                disabled=${isRestoring}
-                loading=${isRestoring}
-                variant="warning"
-                icon="RefreshIcon"
-              >
-                ${isRestoring ? "Rebooting..." : "Reboot"}
-              <//>
-              <${Button}
-                onClick=${factoryReset}
-                disabled=${isRestoring}
-                loading=${isRestoring}
-                variant="danger"
-                icon="ResetIcon"
-              >
-                ${isRestoring ? "Restoring..." : "Restore Factory Settings"}
-              <//>
-            </div>
+          <!-- Save Changes Button -->
+          <div class="flex justify-end gap-4">
+            <${Button}
+              onClick=${() => {
+                if (confirm("Are you sure you want to discard all changes?")) {
+                  fetchConfig();
+                }
+              }}
+              variant="secondary"
+              icon="CloseIcon"
+              disabled=${isSaving}
+            >
+              Cancel
+            <//>
+            <${Button}
+              onClick=${() => saveConfig()}
+              disabled=${isSaving}
+              loading=${isSaving}
+              variant="primary"
+              icon="SaveIcon"
+              type="button"
+            >
+              ${isSaving ? "Saving..." : "Save Changes"}
+            <//>
           </div>
         </div>
-      </div>
-      <!-- Save Changes Button -->
-      <div
-        class="mt-8 border-t border-gray-200 pt-6 pb-4 flex justify-center gap-4 w-full"
-      >
-        <${Button}
-          onClick=${() => {
-            if (confirm("Are you sure you want to discard all changes?")) {
-              fetchConfig();
-            }
-          }}
-          variant="secondary"
-          icon="CloseIcon"
-          disabled=${isSaving}
-        >
-          Cancel
-        <//>
-        <${Button}
-          onClick=${() => saveConfig()}
-          disabled=${isSaving}
-          loading=${isSaving}
-          variant="primary"
-          icon="SaveIcon"
-          type="button"
-        >
-          ${isSaving ? "Saving..." : "Save"}
-        <//>
       </div>
     </div>
   `;

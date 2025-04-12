@@ -9,6 +9,7 @@ import Serial from "./pages/Serial.js";
 import Logs from "./pages/Logs.js";
 import Login from "./pages/Login.js";
 import Status from "./pages/Status.js";
+import { useLanguage } from "./LanguageContext.js";
 
 export const Icons = {
   // Loading spinner icon
@@ -472,6 +473,23 @@ export const Icons = {
       <path d="M8 16v4a1 1 0 0 1 -1 1h-4" />
     </svg>
   `,
+  StatusIcon: ({ className = "h-5 w-5" }) => html`
+    <svg
+      class=${className}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+      <path d="M12 9h.01" />
+      <path d="M11 12h1v4h1" />
+    </svg>
+  `,
 };
 
 const VARIANTS = {
@@ -549,86 +567,207 @@ export function Button({
   `;
 }
 
-export function Header({ user, onLogout }) {
+export const Header = ({ user, onLogout }) => {
+  const { t, language, changeLanguage } = useLanguage();
+
   return html`
-    <header class="bg-white shadow-sm fixed top-0 right-0 left-64 h-16">
-      <div class="h-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-full items-center">
-          <div class="flex-1"></div>
-          <div class="flex items-center space-x-4">
-            <div class="flex items-center">
-              <span class="text-gray-700 text-sm">
-                <i class="fas fa-user-circle text-xl mr-2"></i>
-                ${user}
-              </span>
-            </div>
-            <button
-              onClick=${onLogout}
-              class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+    <header class="fixed top-0 right-0 left-64 bg-white shadow-sm z-10">
+      <div class="flex items-center justify-between px-6 py-4">
+        <div class="flex items-center space-x-4">
+          <h1 class="text-xl font-semibold">${t("appName")}</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+          <div class="relative">
+            <select
+              value=${language}
+              onChange=${(e) => changeLanguage(e.target.value)}
+              class="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <${Icons.LogoutIcon} className="h-5 w-5 mr-2" />
-              Logout
-            </button>
+              <option value="en">${t("english")}</option>
+              <option value="vi">${t("vietnamese")}</option>
+            </select>
           </div>
+          ${user &&
+          html`
+            <div class="flex items-center space-x-4">
+              <span class="text-gray-700">${user.username}</span>
+              <button
+                onClick=${onLogout}
+                class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                <${Icons.LogoutIcon} className="h-5 w-5 mr-2" />
+                ${t("logout")}
+              </button>
+            </div>
+          `}
         </div>
       </div>
     </header>
   `;
-}
+};
 
 export function Sidebar({ currentRoute }) {
-  const links = [
+  const { t } = useLanguage();
+  const [expandedMenus, setExpandedMenus] = useState(new Set());
+
+  const menuItems = [
     {
       path: "/",
-      label: "Home",
+      label: t("home"),
       icon: html`<${Icons.HomeIcon} className="w-5 h-5" />`,
     },
     {
       path: "/status",
-      label: "Status",
-      icon: html`<${Icons.ClockIcon} className="w-5 h-5" />`,
+      label: t("status"),
+      icon: html`<${Icons.StatusIcon} className="w-5 h-5" />`,
     },
     {
       path: "/network",
-      label: "Network",
+      label: t("network"),
       icon: html`<${Icons.NetworkIcon} className="w-5 h-5" />`,
     },
     {
-      path: "/serial1",
-      label: "Serial 1",
+      label: t("port"),
       icon: html`<${Icons.SerialIcon} className="w-5 h-5" />`,
+      children: [
+        {
+          path: "/serial1",
+          label: t("serial1"),
+        },
+        {
+          path: "/serial2",
+          label: t("serial2"),
+        },
+        {
+          path: "/logs",
+          label: t("logs"),
+        },
+      ],
     },
     {
-      path: "/serial2",
-      label: "Serial 2",
-      icon: html`<${Icons.SerialIcon} className="w-5 h-5" />`,
-    },
-    {
-      path: "/mqtt",
-      label: "MQTT",
-      icon: html`<${Icons.MqttIcon} className="w-5 h-5" />`,
-    },
-    {
-      path: "/devices",
-      label: "Devices",
+      label: t("gateway"),
       icon: html`<${Icons.DevicesIcon} className="w-5 h-5" />`,
+      children: [
+        {
+          path: "/mqtt",
+          label: t("mqttGateway"),
+        },
+        {
+          path: "/devices",
+          label: t("edgeComputing"),
+        },
+        {
+          path: "/io-function",
+          label: t("ioFunction"),
+        },
+      ],
     },
     {
-      path: "/io-function",
-      label: "IO Function",
-      icon: html`<${Icons.ControlCenterIcon} className="w-5 h-5" />`,
-    },
-    {
-      path: "/logs",
-      label: "Logs",
-      icon: html`<${Icons.ClockIcon} className="w-5 h-5" />`,
-    },
-    {
-      path: "/system",
-      label: "System",
+      label: t("system"),
       icon: html`<${Icons.SettingsIcon} className="w-5 h-5" />`,
+      children: [
+        {
+          path: "/system",
+          label: t("settings"),
+        },
+        {
+          path: "/management",
+          label: t("management"),
+        },
+      ],
     },
   ];
+
+  const renderMenuItem = (item, level = 0) => {
+    const isActive =
+      item.path === currentRoute ||
+      (item.children &&
+        item.children.some((child) => child.path === currentRoute));
+    const hasChildren = item.children && item.children.length > 0;
+    const isExpanded = expandedMenus.has(item.label);
+
+    // Auto-expand parent menu if child is active and menu is not explicitly collapsed
+    useEffect(() => {
+      if (isActive && hasChildren && !expandedMenus.has(item.label)) {
+        setExpandedMenus((prev) => new Set([...prev, item.label]));
+      }
+    }, [isActive, hasChildren, item.label]);
+
+    return html`
+      <li>
+        <div class="relative">
+          <a
+            href=${item.path ? `#${item.path}` : "#"}
+            class=${`flex items-center px-4 py-2 rounded transition-colors ${
+              isActive ? "bg-blue-600" : "hover:bg-gray-700"
+            }`}
+            onClick=${(e) => {
+              if (!item.path) {
+                e.preventDefault();
+                setExpandedMenus((prev) => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(item.label)) {
+                    newSet.delete(item.label);
+                  } else {
+                    newSet.add(item.label);
+                  }
+                  return newSet;
+                });
+              }
+            }}
+          >
+            <span class="w-6 h-6 mr-3 flex items-center justify-center">
+              ${item.icon}
+            </span>
+            <span>${item.label}</span>
+            ${hasChildren &&
+            html`
+              <span class="ml-auto">
+                <svg
+                  class="w-4 h-4 transform transition-transform ${isExpanded
+                    ? "rotate-180"
+                    : ""}"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </span>
+            `}
+          </a>
+          ${hasChildren &&
+          html`
+            <ul
+              class="submenu ${isExpanded ? "" : "hidden"} pl-4 mt-1 space-y-1"
+            >
+              ${item.children.map(
+                (child) => html`
+                  <li>
+                    <a
+                      href="#${child.path}"
+                      class=${`flex items-center px-4 py-2 rounded transition-colors ${
+                        currentRoute === child.path
+                          ? "bg-blue-600"
+                          : "hover:bg-gray-700"
+                      }`}
+                    >
+                      <span>${child.label}</span>
+                    </a>
+                  </li>
+                `
+              )}
+            </ul>
+          `}
+        </div>
+      </li>
+    `;
+  };
 
   return html`
     <aside
@@ -637,25 +776,7 @@ export function Sidebar({ currentRoute }) {
       <div class="text-2xl font-bold mb-8">Gateway Config</div>
       <nav>
         <ul class="space-y-2">
-          ${links.map(
-            (link) => html`
-              <li>
-                <a
-                  href="#${link.path}"
-                  class=${`flex items-center px-4 py-2 rounded transition-colors ${
-                    currentRoute === link.path
-                      ? "bg-blue-600"
-                      : "hover:bg-gray-700"
-                  }`}
-                >
-                  <span class="w-6 h-6 mr-3 flex items-center justify-center">
-                    ${link.icon}
-                  </span>
-                  <span>${link.label}</span>
-                </a>
-              </li>
-            `
-          )}
+          ${menuItems.map((item) => renderMenuItem(item))}
         </ul>
       </nav>
     </aside>
@@ -880,4 +1001,191 @@ const renderContent = () => {
     default:
       return html`<${Home} />`;
   }
+};
+
+export const Input = ({
+  type,
+  name,
+  label,
+  value,
+  onChange,
+  extra,
+  min,
+  max,
+  maxLength,
+  note,
+  disabled,
+  required,
+  placeholder,
+  readonly,
+  step,
+  key,
+}) => {
+  return html`
+    <div key=${key}>
+      ${label &&
+      html`
+        <label class="block text-sm font-medium text-gray-700 mb-1"
+          >${label}${required ? html`<span class="text-red-500">*</span>` : ""}
+          ${extra
+            ? html`<span class="text-sm text-gray-500"> ${extra}</span>`
+            : ""}</label
+        >
+      `}
+      <div class="flex items-center space-x-2">
+        <input
+          type=${type || "text"}
+          name=${name}
+          value=${value}
+          onChange=${onChange}
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          min=${min}
+          max=${max}
+          maxlength=${maxLength}
+          required=${required}
+          disabled=${disabled}
+          placeholder=${placeholder}
+          readonly=${readonly}
+          ${type === "number" ? `step=${step}` : ""}
+        />
+      </div>
+      ${note && html`<p class="mt-1 text-sm text-gray-500">${note}</p>`}
+    </div>
+  `;
+};
+
+export const Select = ({
+  name,
+  label,
+  value,
+  onChange,
+  options,
+  options_extra,
+  required,
+  disabled,
+  key,
+}) => {
+  return html`
+    <div key=${key}>
+      ${label &&
+      html`
+        <label class="block text-sm font-medium text-gray-700 mb-1"
+          >${label}${required &&
+          html`<span class="text-red-500">*</span>`}</label
+        >
+      `}
+      <div>
+        <select
+          name=${name}
+          value=${value}
+          onChange=${onChange}
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          required=${required}
+          disabled=${disabled}
+        >
+          ${options_extra
+            ? html`
+                ${options_extra.map(
+                  (option) =>
+                    html`<option value=${option.value}>${option.label}</option>`
+                )}
+              `
+            : options.map(
+                (option) =>
+                  html`<option value=${option[0]}>${option[1]}</option>`
+              )}
+        </select>
+      </div>
+    </div>
+  `;
+};
+
+export const Checkbox = ({
+  name,
+  label,
+  value,
+  onChange,
+  key,
+  label_extra,
+}) => {
+  return html`
+    <div key=${key} class="flex items-center">
+      <input
+        type="checkbox"
+        name=${name}
+        checked=${value}
+        onChange=${onChange}
+        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+      />
+      ${label_extra
+        ? html`
+            <h2 class="ml-2 block text-sm text-gray-700 font-semibold">
+              ${label_extra}
+            </h2>
+          `
+        : label &&
+          html`
+            <label class="ml-2 block text-sm text-gray-700">${label}</label>
+          `}
+    </div>
+  `;
+};
+
+export const FileInput = ({
+  name,
+  label,
+  value,
+  onChange,
+  note,
+  accept,
+  disabled,
+  onUpload,
+  isUploading,
+  key,
+}) => {
+  const [hasFile, setHasFile] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    setHasFile(!!file);
+    setSelectedFile(file);
+    if (onChange) onChange(e);
+  };
+
+  const handleUploadClick = (e) => {
+    e.preventDefault();
+    if (selectedFile && onUpload) {
+      onUpload(selectedFile);
+    }
+  };
+
+  return html`
+    <div key=${key}>
+      ${label &&
+      html`
+        <label class="block text-sm font-medium text-gray-700 mb-1"
+          >${label}</label
+        >
+      `}
+      <div class="flex items-center space-x-2">
+        <input
+          type="file"
+          name=${name}
+          onChange=${handleFileChange}
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled=${disabled}
+          accept=${accept}
+        />
+        <button
+          class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick=${handleUploadClick}
+          disabled=${isUploading || !hasFile}
+        >
+          ${isUploading ? "Uploading..." : "Upload"}
+        </button>
+      </div>
+      ${note && html`<p class="mt-1 text-sm text-gray-500">${note}</p>`}
+    </div>
+  `;
 };

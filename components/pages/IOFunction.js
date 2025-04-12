@@ -1,30 +1,10 @@
 "use strict";
 import { h, html, useState, useEffect } from "../../bundle.js";
-import { Icons, Button } from "../Components.js";
-
-const TIMING_ACTIONS = [
-  [0, "Restart"],
-  [1, "DO Action"],
-];
-
-const TIMING_DO_ACTIONS = [
-  [1, "DO1"],
-  [2, "DO2"],
-];
-
-const TIMING_ACTION_TYPES = [
-  [0, "Normal Open(NO)"],
-  [2, "Normal Close(NC)"],
-  [3, "Flip"],
-];
-
-const DO_FUNCTION_ACTIONS = [
-  [0, "No Action"],
-  [1, "Output Hold"],
-  [2, "Timer Flip"],
-];
+import { Icons, Button, Input, Select, Checkbox } from "../Components.js";
+import { useLanguage } from "../LanguageContext.js";
 
 function IOFunction() {
+  const { t } = useLanguage();
   // State management
   const [activeTab, setActiveTab] = useState("io-control");
   const [isLoading, setIsLoading] = useState(true);
@@ -45,7 +25,7 @@ function IOFunction() {
 
   // IO Configuration state
   const [ioConfig, setIoConfig] = useState({
-    slaveAddress: 1,
+    slaveAddress: 100,
     timers: Array(6)
       .fill()
       .map(() => ({
@@ -63,6 +43,28 @@ function IOFunction() {
     filterTime: 10,
   });
 
+  const TIMING_ACTIONS = [
+    [0, t("restart")],
+    [1, t("doAction")],
+  ];
+
+  const TIMING_DO_ACTIONS = [
+    [1, "DO1"],
+    [2, "DO2"],
+  ];
+
+  const TIMING_ACTION_TYPES = [
+    [0, t("normalOpen")],
+    [2, t("normalClose")],
+    [3, t("flip")],
+  ];
+
+  const DO_FUNCTION_ACTIONS = [
+    [0, t("noAction")],
+    [1, t("outputHold")],
+    [2, t("timerFlip")],
+  ];
+
   // Fetch initial data
   const fetchData = async () => {
     try {
@@ -70,13 +72,13 @@ function IOFunction() {
       setLoadError("");
 
       const [ioStatusResponse, ioConfigResponse] = await Promise.all([
-        fetch("/api/io/status", {
+        fetch("/api/io/get", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
           },
         }),
-        fetch("/api/io/config", {
+        fetch("/api/io-function/get", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -95,12 +97,12 @@ function IOFunction() {
 
       // Update states with fetched data
       setIoStatus({
-        do1: ioStatusData.do?.do1 || false,
-        do2: ioStatusData.do?.do2 || false,
-        di1: ioStatusData.di?.di1 || false,
-        di2: ioStatusData.di?.di2 || false,
-        ai1: ioStatusData.ai?.ai1 || 0,
-        ai2: ioStatusData.ai?.ai2 || 0,
+        do1: ioStatusData.do1 || false,
+        do2: ioStatusData.do2 || false,
+        di1: ioStatusData.di1 || false,
+        di2: ioStatusData.di2 || false,
+        ai1: ioStatusData.ai1 || 0,
+        ai2: ioStatusData.ai2 || 0,
       });
 
       setIoConfig({
@@ -132,7 +134,7 @@ function IOFunction() {
       setSaveError("");
       setSaveSuccess(false);
 
-      const response = await fetch("/api/io/config", {
+      const response = await fetch("/api/io-function/set", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -161,14 +163,14 @@ function IOFunction() {
   };
 
   // Handle DO toggle
-  const handleDoToggle = async (doNumber) => {
+  const handleDoToggle = async (doNumber, doStatus) => {
     try {
       const response = await fetch("/api/io/do/toggle", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ do: doNumber }),
+        body: JSON.stringify({ [`do${doNumber}`]: doStatus }),
       });
 
       if (!response.ok) {
@@ -177,7 +179,7 @@ function IOFunction() {
 
       setIoStatus((prev) => ({
         ...prev,
-        [`do${doNumber}`]: !prev[`do${doNumber}`],
+        [`do${doNumber}`]: doStatus,
       }));
     } catch (error) {
       console.error("Error toggling DO:", error);
@@ -226,6 +228,8 @@ function IOFunction() {
     document.title = "SBIOT-IO Function";
     fetchData();
   }, []);
+
+  // console.log(JSON.stringify(ioConfig));
 
   if (isLoading) {
     return html`
@@ -279,25 +283,25 @@ function IOFunction() {
           <nav class="-mb-px flex space-x-8">
             <button
               onClick=${() => setActiveTab("io-control")}
-              class=${`uppercase py-4 px-1 inline-flex items-center border-b-2 font-medium text-sm
+              class=${`py-4 px-1 inline-flex items-center border-b-2 font-medium text-sm
                 ${
                   activeTab === "io-control"
                     ? "border-blue-500 text-blue-600"
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
-              IO Control
+              ${t("ioControl")}
             </button>
             <button
               onClick=${() => setActiveTab("io-function")}
-              class=${`uppercase py-4 px-1 inline-flex items-center border-b-2 font-medium text-sm
+              class=${`py-4 px-1 inline-flex items-center border-b-2 font-medium text-sm
                 ${
                   activeTab === "io-function"
                     ? "border-blue-500 text-blue-600"
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
-              IO Function
+              ${t("ioFunction")}
             </button>
           </nav>
         </div>
@@ -310,19 +314,22 @@ function IOFunction() {
               <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- DO Status Panel -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <h2 class="text-lg font-semibold mb-4">DO Status</h2>
+                  <h2 class="text-lg font-semibold mb-4">${t("doStatus")}</h2>
                   <div class="space-y-4">
                     <div class="flex items-center justify-between">
                       <span class="text-gray-700">DO1</span>
                       <button
-                        onClick=${() => handleDoToggle(1)}
+                        onClick=${() =>
+                          handleDoToggle(1, ioStatus.do1 === 1 ? 0 : 1)}
                         class=${`relative inline-flex h-6 w-11 items-center rounded-full ${
-                          ioStatus.do1 ? "bg-blue-600" : "bg-gray-200"
+                          ioStatus.do1 === 1 ? "bg-blue-600" : "bg-gray-200"
                         }`}
                       >
                         <span
                           class=${`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                            ioStatus.do1 ? "translate-x-6" : "translate-x-1"
+                            ioStatus.do1 === 1
+                              ? "translate-x-6"
+                              : "translate-x-1"
                           }`}
                         ></span>
                       </button>
@@ -330,14 +337,17 @@ function IOFunction() {
                     <div class="flex items-center justify-between">
                       <span class="text-gray-700">DO2</span>
                       <button
-                        onClick=${() => handleDoToggle(2)}
+                        onClick=${() =>
+                          handleDoToggle(2, ioStatus.do2 === 1 ? 0 : 1)}
                         class=${`relative inline-flex h-6 w-11 items-center rounded-full ${
-                          ioStatus.do2 ? "bg-blue-600" : "bg-gray-200"
+                          ioStatus.do2 === 1 ? "bg-blue-600" : "bg-gray-200"
                         }`}
                       >
                         <span
                           class=${`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                            ioStatus.do2 ? "translate-x-6" : "translate-x-1"
+                            ioStatus.do2 === 1
+                              ? "translate-x-6"
+                              : "translate-x-1"
                           }`}
                         ></span>
                       </button>
@@ -346,45 +356,49 @@ function IOFunction() {
                 </div>
                 <!-- DI Status Panel -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <h2 class="text-lg font-semibold mb-4">DI Status</h2>
+                  <h2 class="text-lg font-semibold mb-4">${t("diStatus")}</h2>
                   <div class="space-y-4">
                     <div class="flex items-center justify-between">
                       <span class="text-gray-700">DI1</span>
                       <span
                         class=${`px-2 py-1 text-sm rounded-full ${
-                          ioStatus.di1
+                          ioStatus.di1 === 1
                             ? "bg-green-100 text-green-800"
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-                        ${ioStatus.di1 ? "ON" : "OFF"}
+                        ${ioStatus.di1 === 1 ? t("on") : t("off")}
                       </span>
                     </div>
                     <div class="flex items-center justify-between">
                       <span class="text-gray-700">DI2</span>
                       <span
                         class=${`px-2 py-1 text-sm rounded-full ${
-                          ioStatus.di2
+                          ioStatus.di2 === 1
                             ? "bg-green-100 text-green-800"
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-                        ${ioStatus.di2 ? "ON" : "OFF"}
+                        ${ioStatus.di2 === 1 ? t("on") : t("off")}
                       </span>
                     </div>
                   </div>
                 </div>
                 <!-- AI Status Panel -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <h2 class="text-lg font-semibold mb-4">AI Status</h2>
+                  <h2 class="text-lg font-semibold mb-4">${t("aiStatus")}</h2>
                   <div class="space-y-4">
                     <div class="flex items-center justify-between">
                       <span class="text-gray-700">AI1</span>
-                      <span class="text-gray-900">${ioStatus.ai1} uA</span>
+                      <span class="text-gray-900"
+                        >${ioStatus.ai1} ${String.fromCodePoint(0x00b5)}A</span
+                      >
                     </div>
                     <div class="flex items-center justify-between">
                       <span class="text-gray-700">AI2</span>
-                      <span class="text-gray-900">${ioStatus.ai2} uA</span>
+                      <span class="text-gray-900"
+                        >${ioStatus.ai2} ${String.fromCodePoint(0x00b5)}A</span
+                      >
                     </div>
                   </div>
                 </div>
@@ -397,154 +411,109 @@ function IOFunction() {
               <div class="space-y-6">
                 <!-- Slave Address Section -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <!-- <h2 class="text-lg font-semibold mb-4">Slave Address</h2> -->
-                  <div class="max-w-xs">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                      Slave Address
-                      <span class="text-xs"> (1~255)</span>
-                    </label>
-                    <input
-                      type="number"
-                      value=${ioConfig.slaveAddress}
-                      onChange=${(e) =>
-                        setIoConfig((prev) => ({
-                          ...prev,
-                          slaveAddress: parseInt(e.target.value) || 1,
-                        }))}
-                      min="1"
-                      max="247"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  ${Input({
+                    type: "number",
+                    name: "slaveAddress",
+                    extra: "(1~255)",
+                    label: t("slaveAddress"),
+                    value: ioConfig.slaveAddress,
+                    onChange: (e) =>
+                      setIoConfig((prev) => ({
+                        ...prev,
+                        slaveAddress: parseInt(e.target.value) || 100,
+                      })),
+                    min: 1,
+                    max: 255,
+                  })}
                 </div>
                 <!-- Timing Function Section -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <h2 class="text-lg font-semibold mb-4">Timing Function</h2>
+                  <h2 class="text-lg font-semibold mb-4">
+                    ${t("timingFunction")}
+                  </h2>
                   <div class="space-y-4">
                     ${ioConfig.timers.map(
                       (timer, index) => html`
                         <div
+                          key=${index}
                           class="border rounded-lg p-4 ${timer.enabled
                             ? "border-blue-200 bg-blue-50"
                             : "border-gray-200"}"
                         >
                           <div class="flex items-center justify-between mb-4">
                             <h3 class="font-medium">Timer ${index + 1}</h3>
-                            <label class="flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked=${timer.enabled}
-                                onChange=${(e) =>
-                                  handleTimerChange(
-                                    index,
-                                    "enabled",
-                                    e.target.checked
-                                  )}
-                                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <span class="ml-2 text-sm text-gray-700"
-                                >Enable</span
-                              >
-                            </label>
+                            ${Checkbox({
+                              key: `timer-${index}-enabled`,
+                              name: "enabled",
+                              label: t("enable"),
+                              value: timer.enabled,
+                              onChange: (e) =>
+                                handleTimerChange(
+                                  index,
+                                  "enabled",
+                                  e.target.checked
+                                ),
+                            })}
                           </div>
                           ${timer.enabled &&
                           html`
                             <div class="grid grid-cols-2 gap-4">
-                              <div>
-                                <label
-                                  class="block text-sm font-medium text-gray-700 mb-1"
-                                >
-                                  Timing Time
-                                </label>
-                                <input
-                                  type="time"
-                                  value=${timer.time}
-                                  onChange=${(e) =>
-                                    handleTimerChange(
-                                      index,
-                                      "time",
-                                      e.target.value
-                                    )}
-                                  step="1"
-                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              </div>
-                              <div>
-                                <label
-                                  class="block text-sm font-medium text-gray-700 mb-1"
-                                >
-                                  Timing Action
-                                </label>
-                                <select
-                                  value=${timer.action}
-                                  onChange=${(e) =>
-                                    handleTimerChange(
-                                      index,
-                                      "action",
-                                      parseInt(e.target.value)
-                                    )}
-                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                  ${TIMING_ACTIONS.map(
-                                    ([value, label]) =>
-                                      html`<option value=${value}>
-                                        ${label}
-                                      </option>`
-                                  )}
-                                </select>
-                              </div>
+                              ${Input({
+                                key: `timer-${index}-time`,
+                                type: "time",
+                                name: "time",
+                                label: t("timingTime"),
+                                value: timer.time,
+                                onChange: (e) =>
+                                  handleTimerChange(
+                                    index,
+                                    "time",
+                                    e.target.value
+                                  ),
+                              })}
+                              ${Select({
+                                key: `timer-${index}-action`,
+                                name: "action",
+                                label: t("timingAction"),
+                                value: timer.action,
+                                onChange: (e) =>
+                                  handleTimerChange(
+                                    index,
+                                    "action",
+                                    parseInt(e.target.value)
+                                  ),
+                                options: TIMING_ACTIONS,
+                              })}
                             </div>
                             ${timer.action === 1 &&
                             html`
                               <div class="mt-4 grid grid-cols-2 gap-4">
-                                <div>
-                                  <label
-                                    class="block text-sm font-medium text-gray-700 mb-1"
-                                  >
-                                    DO Action
-                                  </label>
-                                  <select
-                                    value=${timer.doAction}
-                                    onChange=${(e) =>
-                                      handleTimerChange(
-                                        index,
-                                        "doAction",
-                                        parseInt(e.target.value)
-                                      )}
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  >
-                                    ${TIMING_DO_ACTIONS.map(
-                                      ([value, label]) =>
-                                        html`<option value=${value}>
-                                          ${label}
-                                        </option>`
-                                    )}
-                                  </select>
-                                </div>
-                                <div>
-                                  <label
-                                    class="block text-sm font-medium text-gray-700 mb-1"
-                                  >
-                                    Action Type
-                                  </label>
-                                  <select
-                                    value=${timer.doActionType}
-                                    onChange=${(e) =>
-                                      handleTimerChange(
-                                        index,
-                                        "doActionType",
-                                        parseInt(e.target.value)
-                                      )}
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  >
-                                    ${TIMING_ACTION_TYPES.map(
-                                      ([value, label]) =>
-                                        html`<option value=${value}>
-                                          ${label}
-                                        </option>`
-                                    )}
-                                  </select>
-                                </div>
+                                ${Select({
+                                  key: `timer-${index}-doAction`,
+                                  name: "doAction",
+                                  label: t("doAction"),
+                                  value: timer.doAction,
+                                  onChange: (e) =>
+                                    handleTimerChange(
+                                      index,
+                                      "doAction",
+                                      parseInt(e.target.value)
+                                    ),
+                                  options: TIMING_DO_ACTIONS,
+                                })}
+                                ${Select({
+                                  key: `timer-${index}-doActionType`,
+                                  name: "doActionType",
+                                  label: t("actionType"),
+                                  value: timer.doActionType,
+                                  onChange: (e) =>
+                                    handleTimerChange(
+                                      index,
+                                      "doActionType",
+                                      parseInt(e.target.value)
+                                    ),
+                                  options: TIMING_ACTION_TYPES,
+                                })}
                               </div>
                             `}
                           `}
@@ -555,26 +524,22 @@ function IOFunction() {
                 </div>
                 <!-- DO Function Section -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <h2 class="text-lg font-semibold mb-4">DO Function</h2>
+                  <h2 class="text-lg font-semibold mb-4">${t("doFunction")}</h2>
                   <div class="space-y-4">
-                    <div class="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked=${ioConfig.restartHold}
-                        onChange=${(e) =>
-                          setIoConfig((prev) => ({
-                            ...prev,
-                            restartHold: e.target.checked,
-                          }))}
-                        class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span class="ml-2 text-sm text-gray-700"
-                        >Enable Restart Hold</span
-                      >
-                    </div>
+                    ${Checkbox({
+                      name: "restartHold",
+                      label: t("enableRestartHold"),
+                      value: ioConfig.restartHold,
+                      onChange: (e) =>
+                        setIoConfig((prev) => ({
+                          ...prev,
+                          restartHold: e.target.checked,
+                        })),
+                    })}
+
                     <div class="mt-4">
                       <h3 class="text-sm font-medium text-gray-700 mb-2">
-                        DO Action Config
+                        ${t("doActionConfig")}
                       </h3>
                       <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
@@ -582,17 +547,17 @@ function IOFunction() {
                             <th
                               class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
                             >
-                              Execute IO
+                              ${t("executeIO")}
                             </th>
                             <th
                               class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
                             >
-                              Execute Action
+                              ${t("executeAction")}
                             </th>
                             <th
                               class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase"
                             >
-                              Execute Time
+                              ${t("executeTime")}
                               <span class="text-xs"> (1~65535s)</span>
                             </th>
                           </tr>
@@ -601,71 +566,59 @@ function IOFunction() {
                           <tr>
                             <td class="px-4 py-2">DO1</td>
                             <td class="px-4 py-2">
-                              <select
-                                value=${ioConfig.executeActionDO1}
-                                onChange=${(e) =>
+                              ${Select({
+                                name: "executeActionDO1",
+                                value: ioConfig.executeActionDO1,
+                                onChange: (e) =>
                                   handleDoActionChange(
                                     "executeActionDO1",
                                     parseInt(e.target.value)
-                                  )}
-                                class="w-full px-2 py-1 border border-gray-300 rounded"
-                              >
-                                ${DO_FUNCTION_ACTIONS.map(
-                                  ([value, label]) =>
-                                    html`<option value=${value}>
-                                      ${label}
-                                    </option>`
-                                )}
-                              </select>
+                                  ),
+                                options: DO_FUNCTION_ACTIONS,
+                              })}
                             </td>
                             <td class="px-4 py-2">
-                              <input
-                                type="number"
-                                value=${ioConfig.executeTimeDO1}
-                                onChange=${(e) =>
+                              ${Input({
+                                type: "number",
+                                name: "executeTimeDO1",
+                                value: ioConfig.executeTimeDO1,
+                                onChange: (e) =>
                                   handleDoActionChange(
                                     "executeTimeDO1",
-                                    parseInt(e.target.value) || 0
-                                  )}
-                                min="1"
-                                max="65535"
-                                class="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
+                                    parseInt(e.target.value) || 2
+                                  ),
+                                min: 1,
+                                max: 65535,
+                              })}
                             </td>
                           </tr>
                           <tr>
                             <td class="px-4 py-2">DO2</td>
                             <td class="px-4 py-2">
-                              <select
-                                value=${ioConfig.executeActionDO2}
-                                onChange=${(e) =>
+                              ${Select({
+                                name: "executeActionDO2",
+                                value: ioConfig.executeActionDO2,
+                                onChange: (e) =>
                                   handleDoActionChange(
                                     "executeActionDO2",
                                     parseInt(e.target.value)
-                                  )}
-                                class="w-full px-2 py-1 border border-gray-300 rounded"
-                              >
-                                ${DO_FUNCTION_ACTIONS.map(
-                                  ([value, label]) =>
-                                    html`<option value=${value}>
-                                      ${label}
-                                    </option>`
-                                )}
-                              </select>
+                                  ),
+                                options: DO_FUNCTION_ACTIONS,
+                              })}
                             </td>
                             <td class="px-4 py-2">
-                              <input
-                                type="number"
-                                value=${ioConfig.executeTimeDO2}
-                                onChange=${(e) =>
+                              ${Input({
+                                type: "number",
+                                name: "executeTimeDO2",
+                                value: ioConfig.executeTimeDO2,
+                                onChange: (e) =>
                                   handleDoActionChange(
                                     "executeTimeDO2",
-                                    parseInt(e.target.value) || 0
-                                  )}
-                                min="1"
-                                max="65535"
-                                class="w-full px-2 py-1 border border-gray-300 rounded"
-                              />
+                                    parseInt(e.target.value) || 2
+                                  ),
+                                min: 1,
+                                max: 65535,
+                              })}
                             </td>
                           </tr>
                         </tbody>
@@ -675,55 +628,50 @@ function IOFunction() {
                 </div>
                 <!-- DI Function Section -->
                 <div class="bg-white rounded-lg shadow-md p-6">
-                  <h2 class="text-lg font-semibold mb-4">DI Function</h2>
-                  <div class="max-w-xs">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                      Filter Time
-                      <span class="text-xs"> (10~65535)ms</span>
-                    </label>
-                    <input
-                      type="number"
-                      value=${ioConfig.filterTime}
-                      onChange=${(e) =>
-                        setIoConfig((prev) => ({
-                          ...prev,
-                          filterTime: parseInt(e.target.value) || 10,
-                        }))}
-                      min="10"
-                      max="65535"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  <h2 class="text-lg font-semibold mb-4">${t("diFunction")}</h2>
+                  ${Input({
+                    type: "number",
+                    name: "filterTime",
+                    label: t("filterTime"),
+                    extra: "(10~65535)ms",
+                    value: ioConfig.filterTime,
+                    onChange: (e) =>
+                      setIoConfig((prev) => ({
+                        ...prev,
+                        filterTime: parseInt(e.target.value) || 10,
+                      })),
+                    min: 10,
+                    max: 65535,
+                  })}
+                </div>
+                <!-- Save and Cancel Buttons -->
+                <div class="flex justify-end gap-4">
+                  <${Button}
+                    onClick=${() => {
+                      if (
+                        confirm("Are you sure you want to discard all changes?")
+                      ) {
+                        fetchData();
+                      }
+                    }}
+                    variant="secondary"
+                    icon="CloseIcon"
+                    disabled=${isSaving}
+                  >
+                    ${t("cancel")}
+                  <//>
+                  <${Button}
+                    onClick=${saveConfig}
+                    disabled=${isSaving}
+                    loading=${isSaving}
+                    icon="SaveIcon"
+                  >
+                    ${isSaving ? t("saving") : t("save")}
+                  <//>
                 </div>
               </div>
             </div>
           `}
-
-      <!-- Save and Cancel Buttons -->
-      <div
-        class="mt-8 border-t border-gray-200 pt-6 pb-4 flex justify-end gap-4"
-      >
-        <${Button}
-          onClick=${() => {
-            if (confirm("Are you sure you want to discard all changes?")) {
-              fetchData();
-            }
-          }}
-          variant="secondary"
-          icon="CloseIcon"
-          disabled=${isSaving}
-        >
-          Cancel
-        <//>
-        <${Button}
-          onClick=${saveConfig}
-          disabled=${isSaving}
-          loading=${isSaving}
-          icon="SaveIcon"
-        >
-          ${isSaving ? "Saving..." : "Save"}
-        <//>
-      </div>
     </div>
   `;
 }

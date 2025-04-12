@@ -4,46 +4,52 @@ import { html, useState, useEffect } from "../../bundle.js";
 function Status() {
   const [status, setStatus] = useState({
     system: {
-      modalName: "",
-      firmwareVersion: "",
-      runTime: "",
-      macAddress: "",
-      imei: "",
-      serialNumber: "",
-      currentNetworkCard: "",
-      systemTime: "",
+      modalName: "SBIOT",
+      firmwareVersion: "1.0.0",
+      runTime: "00:00:00",
+      macAddress: "00:00:00:00:00:00",
+      imei: "000000000000000",
+      serialNumber: "000000000000000",
+      currentNetworkCard: "Ethernet",
+      systemTime: "2025-03-31 12:00:00",
     },
     ethernet: {
-      ipAddress: "",
-      preferredDns: "",
-      alternateDns: "",
+      ipAddress: "192.168.1.1",
+      preferredDns: "8.8.8.8",
+      alternateDns: "8.8.4.4",
     },
     cellularNetwork: {
-      iccid: "",
-      ipAddress: "",
-      preferredDns: "",
-      alternateDns: "",
-      signalValue: "",
-      networkType: "",
-      connectionStatus: "",
+      iccid: "000000000000000",
+      ipAddress: "192.168.1.1",
+      preferredDns: "8.8.8.8",
+      alternateDns: "8.8.4.4",
+      signalValue: "100",
+      networkType: "LTE",
+      connectionStatus: "Connected",
     },
-    port: {
-      selectedSocketConnection: "",
-      connectionStatus: "",
-      txCount: 0,
-      rxCount: 0,
-    },
+    port: [
+      {
+        connectionStatus: "Connected",
+        txCount: 100,
+        rxCount: 100,
+      },
+      {
+        connectionStatus: "Connected",
+        txCount: 100,
+        rxCount: 100,
+      },
+    ],
     mqttGateway: {
-      enabled: false,
-      connectionStatus: "",
+      enabled: true,
+      connectionStatus: "Connected",
     },
     edgeComputing: {
-      enabled: false,
-      connectionStatus: "",
+      enabled: true,
+      connectionStatus: "Connected",
     },
     location: {
-      latitude: "",
-      longitude: "",
+      latitude: "37.774929",
+      longitude: "-122.419418",
     },
   });
 
@@ -68,17 +74,21 @@ function Status() {
     }
   };
 
-  const StatusCard = ({ title, children }) => html`
-    <div class="bg-white shadow rounded-lg p-6 mb-6">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4">${title}</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${children}</div>
-    </div>
-  `;
-
-  const StatusItem = ({ label, value }) => html`
-    <div class="flex flex-col">
-      <span class="text-sm font-medium text-gray-500">${label}</span>
-      <span class="text-base text-gray-900">${value}</span>
+  const StatusSection = ({ title, items }) => html`
+    <div class="bg-white shadow rounded-lg mb-6">
+      <div class="px-4 py-3 border-b border-gray-200 bg-gray-100">
+        <h2 class="text-lg font-semibold text-gray-900">${title}</h2>
+      </div>
+      <div class="divide-y divide-gray-200">
+        ${items.map(
+          ([label, value]) => html`
+            <div class="px-4 py-3 grid grid-cols-2 gap-4">
+              <div class="text-sm font-medium text-gray-500">${label}</div>
+              <div class="text-sm text-gray-900 text-left">${value}</div>
+            </div>
+          `
+        )}
+      </div>
     </div>
   `;
 
@@ -94,90 +104,85 @@ function Status() {
 
   return html`
     <div class="container mx-auto px-4 py-8">
-      <h1 class="text-2xl font-bold text-gray-900 mb-8">System Status</h1>
-      
-      <${StatusCard} title="System Information">
-        <${StatusItem} label="Modal Name" value=${status.system.modalName} />
-        <${StatusItem} label="Firmware Version" value=${
-    status.system.firmwareVersion
-  } />
-        <${StatusItem} label="Run Time" value=${status.system.runTime} />
-        <${StatusItem} label="MAC Address" value=${status.system.macAddress} />
-        <${StatusItem} label="IMEI" value=${status.system.imei} />
-        <${StatusItem} label="Serial Number" value=${
-    status.system.serialNumber
-  } />
-        <${StatusItem} label="Current Network Card" value=${
-    status.system.currentNetworkCard
-  } />
-        <${StatusItem} label="System Time" value=${status.system.systemTime} />
-      </${StatusCard}>
+      <div class="max-w-4xl mx-auto">
+        <${StatusSection}
+          title="System Information"
+          items=${[
+            ["Modal Name", status.system.modalName],
+            ["Firmware Version", status.system.firmwareVersion],
+            ["Run Time", status.system.runTime],
+            ["MAC Address", status.system.macAddress],
+            ["IMEI", status.system.imei],
+            ["Serial Number", status.system.serialNumber],
+            ["Current Network Card", status.system.currentNetworkCard],
+            ["System Time", status.system.systemTime],
+          ]}
+        />
 
-      <${StatusCard} title="Ethernet">
-        <${StatusItem} label="IP Address" value=${status.ethernet.ipAddress} />
-        <${StatusItem} label="Preferred DNS" value=${
-    status.ethernet.preferredDns
-  } />
-        <${StatusItem} label="Alternate DNS" value=${
-    status.ethernet.alternateDns
-  } />
-      </${StatusCard}>
+        <${StatusSection}
+          title="Ethernet"
+          items=${[
+            ["IP Address", status.ethernet.ipAddress],
+            ["Preferred DNS", status.ethernet.preferredDns],
+            ["Alternate DNS", status.ethernet.alternateDns],
+          ]}
+        />
 
-      <${StatusCard} title="Cellular Network">
-        <${StatusItem} label="ICCID" value=${status.cellularNetwork.iccid} />
-        <${StatusItem} label="IP Address" value=${
-    status.cellularNetwork.ipAddress
-  } />
-        <${StatusItem} label="Preferred DNS" value=${
-    status.cellularNetwork.preferredDns
-  } />
-        <${StatusItem} label="Alternate DNS" value=${
-    status.cellularNetwork.alternateDns
-  } />
-        <${StatusItem} label="Signal Value" value=${
-    status.cellularNetwork.signalValue
-  } />
-        <${StatusItem} label="Network Type" value=${
-    status.cellularNetwork.networkType
-  } />
-        <${StatusItem} label="Connection Status" value=${
-    status.cellularNetwork.connectionStatus
-  } />
-      </${StatusCard}>
+        <${StatusSection}
+          title="Cellular Network"
+          items=${[
+            ["ICCID", status.cellularNetwork.iccid],
+            ["IP Address", status.cellularNetwork.ipAddress],
+            ["Preferred DNS", status.cellularNetwork.preferredDns],
+            ["Alternate DNS", status.cellularNetwork.alternateDns],
+            ["Signal Value", status.cellularNetwork.signalValue],
+            ["Network Type", status.cellularNetwork.networkType],
+            ["Connection Status", status.cellularNetwork.connectionStatus],
+          ]}
+        />
 
-      <${StatusCard} title="Port">
-        <${StatusItem} label="Selected Socket Connection" value=${
-    status.port.selectedSocketConnection
-  } />
-        <${StatusItem} label="Connection Status" value=${
-    status.port.connectionStatus
-  } />
-        <${StatusItem} label="TX Count" value=${status.port.txCount} />
-        <${StatusItem} label="RX Count" value=${status.port.rxCount} />
-      </${StatusCard}>
+        <${StatusSection}
+          title="Port1"
+          items=${[
+            ["Connection Status", status.port[0].connectionStatus],
+            ["TX Count", status.port[0].txCount],
+            ["RX Count", status.port[0].rxCount],
+          ]}
+        />
 
-      <${StatusCard} title="MQTT Gateway">
-        <${StatusItem} label="Enabled" value=${
-    status.mqttGateway.enabled ? "Yes" : "No"
-  } />
-        <${StatusItem} label="Connection Status" value=${
-    status.mqttGateway.connectionStatus
-  } />
-      </${StatusCard}>
+        <${StatusSection}
+          title="Port2"
+          items=${[
+            ["Connection Status", status.port[1].connectionStatus],
+            ["TX Count", status.port[1].txCount],
+            ["RX Count", status.port[1].rxCount],
+          ]}
+        />
 
-      <${StatusCard} title="Edge Computing">
-        <${StatusItem} label="Enabled" value=${
-    status.edgeComputing.enabled ? "Yes" : "No"
-  } />
-        <${StatusItem} label="Connection Status" value=${
-    status.edgeComputing.connectionStatus
-  } />
-      </${StatusCard}>
+        <${StatusSection}
+          title="MQTT Gateway"
+          items=${[
+            ["Enabled", status.mqttGateway.enabled ? "Yes" : "No"],
+            ["Connection Status", status.mqttGateway.connectionStatus],
+          ]}
+        />
 
-      <${StatusCard} title="Location">
-        <${StatusItem} label="Latitude" value=${status.location.latitude} />
-        <${StatusItem} label="Longitude" value=${status.location.longitude} />
-      </${StatusCard}>
+        <${StatusSection}
+          title="Edge Computing"
+          items=${[
+            ["Enabled", status.edgeComputing.enabled ? "Yes" : "No"],
+            ["Connection Status", status.edgeComputing.connectionStatus],
+          ]}
+        />
+
+        <${StatusSection}
+          title="Location"
+          items=${[
+            ["Latitude", status.location.latitude],
+            ["Longitude", status.location.longitude],
+          ]}
+        />
+      </div>
     </div>
   `;
 }
